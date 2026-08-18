@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>雀の間 〜麻雀の役を覚えて、NPCと打つ〜</title>
+<style>
+:root{
+  --felt:#155040; --felt-dark:#0c382c; --felt-line:#1e6a55;
+  --ivory:#f8f3e6; --gold:#d9a441; --gold-soft:#eecf8f;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  background:radial-gradient(circle at 50% 15%, var(--felt) 0%, var(--felt-dark) 100%);
+  min-height:100vh;color:var(--ivory);
+  font-family:"Hiragino Kaku Gothic ProN","Hiragino Sans","Yu Gothic",Meiryo,sans-serif;
+  display:flex;align-items:center;justify-content:center;padding:24px;
+}
+.serif{font-family:"Hiragino Mincho ProN","Yu Mincho","MS PMincho",serif}
+.wrap{max-width:480px;width:100%;text-align:center}
+h1{font-size:26px;letter-spacing:.12em;color:var(--gold-soft);margin-bottom:6px}
+.sub{font-size:12px;color:#bcd6c9;letter-spacing:.15em;margin-bottom:30px}
+.rule{width:120px;height:2px;background:linear-gradient(90deg,transparent,var(--gold),transparent);margin:0 auto 26px}
+.cards{display:flex;flex-direction:column;gap:14px}
+a.card{
+  display:block;text-decoration:none;color:var(--ivory);text-align:left;
+  background:rgba(255,255,255,.07);border:1px solid var(--felt-line);border-radius:12px;
+  padding:18px 20px;transition:transform .12s,border-color .12s;
+}
+a.card:hover{border-color:var(--gold);transform:translateY(-2px)}
+a.card b{font-size:17px;color:var(--gold-soft);display:block;margin-bottom:4px}
+a.card p{font-size:12.5px;color:#cfe4da;line-height:1.6}
+footer{margin-top:26px;font-size:11px;color:#6f9484}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1 class="serif">雀の間</h1>
+  <div class="sub">麻雀の役を覚えて、NPCと打つ</div>
+  <div class="rule"></div>
+  <div class="cards">
+    <a class="card" href="yaku-dojo.html">
+      <b>役マスター道場</b>
+      <p>雀魂で勝つための役の勉強ゲーム。牌や用語の図解、役図鑑、鳴きクイズ・役当てクイズで基礎を固める。</p>
+    </a>
+    <a class="card" href="mahjong/index.html">
+      <b>四人打ち麻雀 (NPC対局場)</b>
+      <p>時間制限なし。NPC3人を相手に、東風戦・半荘戦などをじっくり打てる対局場。</p>
+    </a>
+  </div>
+  <footer>役を覚えたらそのまま対局場へ。忘れたらまた道場へ戻ってOK。</footer>
+</div>
+</body>
+</html>

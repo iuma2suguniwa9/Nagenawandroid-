@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>役マスター道場 〜雀魂で勝つための役勉強ゲーム〜</title>
+<style>
+:root{
+  --felt:#155040; --felt-dark:#0c382c; --felt-line:#1e6a55;
+  --ivory:#f8f3e6; --ivory-dim:#e9e1cc; --tile-side:#cfc4a6;
+  --ink:#2b2b26; --red:#c43a2f; --gold:#d9a441; --gold-soft:#eecf8f;
+  --man:#b03028; --pin:#2b5f9e; --sou:#2e7d46; --gray:#8a8474;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{
+  background:radial-gradient(circle at 50% 20%, var(--felt) 0%, var(--felt-dark) 100%);
+  min-height:100vh;color:var(--ivory);
+  font-family:"Hiragino Kaku Gothic ProN","Hiragino Sans","Yu Gothic",Meiryo,sans-serif;
+  font-size:15px;line-height:1.6;
+}
+.serif{font-family:"Hiragino Mincho ProN","Yu Mincho","MS PMincho",serif}
+.wrap{max-width:540px;margin:0 auto;padding:0 12px 90px}
+header{text-align:center;padding:22px 0 10px}
+header h1{font-size:26px;letter-spacing:.12em;color:var(--gold-soft);font-weight:700}
+header .sub{font-size:12px;color:#bcd6c9;letter-spacing:.2em;margin-top:2px}
+header .rule{width:120px;height:2px;background:linear-gradient(90deg,transparent,var(--gold),transparent);margin:10px auto 0}
+
+/* タブ */
+nav{position:sticky;top:0;z-index:20;display:flex;gap:6px;padding:10px 0;
+  background:linear-gradient(180deg,var(--felt-dark) 70%,transparent)}
+nav button{
+  flex:1;border:0;cursor:pointer;padding:10px 1px 8px;border-radius:6px 6px 4px 4px;
+  background:linear-gradient(180deg,var(--ivory) 82%,var(--tile-side) 82%);
+  color:var(--ink);font-weight:700;font-size:12.5px;letter-spacing:0;
+  box-shadow:0 3px 0 #a89a76,0 4px 6px rgba(0,0,0,.35);
+  transition:transform .12s, box-shadow .12s;white-space:nowrap;
+}
+nav button.on{background:linear-gradient(180deg,#fff6dd 82%,var(--gold) 82%);
+  box-shadow:0 1px 0 #a8802c,0 2px 4px rgba(0,0,0,.4);transform:translateY(2px);color:#5a3d10}
+nav button:active{transform:translateY(2px)}
+section{display:none}
+section.on{display:block;animation:fade .25s ease}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* 共通カード */
+.panel{background:rgba(255,255,255,.06);border:1px solid var(--felt-line);
+  border-radius:10px;padding:14px;margin:12px 0}
+.panel h2{font-size:16px;color:var(--gold-soft);letter-spacing:.08em;margin-bottom:8px}
+.panel p{font-size:13.5px;color:#e6efe9}
+.hint{font-size:12px;color:#a9c8ba}
+
+/* 牌 (SVG) */
+.hand{display:flex;flex-wrap:wrap;gap:3px;justify-content:center;margin:10px 0}
+.tile{
+  width:36px;height:50px;border-radius:5px;flex:0 0 auto;padding:2px 2px 6px;
+  background:linear-gradient(180deg,#fffdf5 88%,var(--tile-side) 88%);
+  border:1px solid #b9ae8e;box-shadow:0 2px 3px rgba(0,0,0,.35);user-select:none;
+}
+.tile svg{width:100%;height:100%;display:block}
+@media (max-width:400px){.tile{width:31px;height:44px}}
+.tcol{display:flex;flex-direction:column;align-items:center;gap:3px}
+.tcol .tlabel{font-size:10.5px;color:#cfe4da;line-height:1.1;text-align:center}
+.trow{display:flex;flex-wrap:wrap;gap:4px;justify-content:center;margin:8px 0 2px}
+
+/* 用語図解 */
+.term-card{background:var(--ivory);color:var(--ink);border-radius:9px;margin:12px 0;
+  box-shadow:0 3px 0 var(--tile-side),0 5px 8px rgba(0,0,0,.3);padding:13px}
+.term-card .t-name{font-size:17px;font-weight:800;letter-spacing:.04em}
+.term-card .t-read{font-size:11.5px;color:var(--gray);margin-left:6px}
+.term-card p{font-size:13px;margin-top:7px}
+.term-card .hand{margin:8px 0 2px}
+.term-card .imp{background:#fbe9c4;border-radius:6px;padding:7px 10px;font-size:12.5px;margin-top:8px}
+.term-card .imp b{color:#8a5a00}
+.ghand{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:10px 0 2px}
+.grp{display:flex;flex-direction:column;align-items:center;gap:4px;
+  background:#f0e8d2;border-radius:8px;padding:6px 5px 5px}
+.grp .tiles{display:flex;gap:2px}
+.grp .glabel{font-size:11px;font-weight:700;color:#8a5a00;line-height:1}
+
+/* バッジ */
+.badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;letter-spacing:.05em}
+.b-ok{background:#1c6b3f;color:#d8ffe6}
+.b-down{background:#8a6414;color:#ffefc2}
+.b-no{background:#8c2f27;color:#ffd9d4}
+.b-han{background:#3a3a33;color:var(--gold-soft)}
+
+/* ===== 図鑑 ===== */
+.starter{border-color:var(--gold)}
+.starter li{font-size:13.5px;margin:6px 0 0 1.2em}
+.filters{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0 4px}
+.filters button{border:1px solid var(--felt-line);background:transparent;color:#cfe4da;
+  border-radius:20px;padding:5px 12px;font-size:12.5px;cursor:pointer}
+.filters button.on{background:var(--gold);border-color:var(--gold);color:#4a3208;font-weight:700}
+.yaku-card{background:var(--ivory);color:var(--ink);border-radius:9px;margin:10px 0;
+  box-shadow:0 3px 0 var(--tile-side),0 5px 8px rgba(0,0,0,.3);overflow:hidden;cursor:pointer}
+.yaku-head{display:flex;align-items:center;gap:8px;padding:11px 13px}
+.yaku-head .name{font-size:16.5px;font-weight:800;letter-spacing:.04em}
+.yaku-head .read{font-size:11px;color:var(--gray)}
+.yaku-head .spacer{flex:1}
+.yaku-body{display:none;padding:0 13px 13px;border-top:1px dashed #d5cbae}
+.yaku-card.open .yaku-body{display:block}
+.yaku-body p{font-size:13px;margin-top:9px}
+.yaku-body .hand{margin:8px 0 0}
+.yaku-body .exlabel{font-size:11px;color:var(--gray);text-align:center;margin-top:8px}
+.yaku-body .tip{background:#f0e8d2;border-radius:6px;padding:8px 10px;font-size:12.5px;margin-top:9px}
+.yaku-body .tip b{color:#8a5a00}
+.cat-title{margin:20px 0 4px;color:var(--gold-soft);font-size:15px;letter-spacing:.15em;
+  display:flex;align-items:center;gap:10px}
+.cat-title::before,.cat-title::after{content:"";flex:1;height:1px;background:var(--felt-line)}
+
+/* ===== クイズ共通 ===== */
+.q-top{display:flex;justify-content:space-between;align-items:center;margin:14px 0 6px}
+.q-num{font-size:13px;color:#a9c8ba}
+.q-score{font-size:14px;color:var(--gold-soft);font-weight:700}
+.q-name{text-align:center;font-size:30px;font-weight:800;letter-spacing:.1em;color:#fff;
+  margin:14px 0 2px;text-shadow:0 2px 6px rgba(0,0,0,.4)}
+.q-caption{text-align:center;font-size:12.5px;color:#cfe4da;margin-bottom:4px}
+.q-question{text-align:center;font-size:15px;color:#fff;margin:12px 0}
+.choices{display:flex;flex-direction:column;gap:9px;margin-top:10px}
+.choices button{
+  border:0;cursor:pointer;border-radius:7px;padding:13px 12px;font-size:15px;font-weight:700;
+  background:linear-gradient(180deg,var(--ivory) 85%,var(--tile-side) 85%);color:var(--ink);
+  box-shadow:0 3px 0 #a89a76,0 4px 6px rgba(0,0,0,.3);text-align:center;letter-spacing:.03em;
+}
+.choices button:active{transform:translateY(2px);box-shadow:0 1px 0 #a89a76}
+.choices button:disabled{cursor:default;opacity:.92}
+.choices button.correct{background:linear-gradient(180deg,#e2f7e6 85%,#7fc492 85%);box-shadow:0 3px 0 #4f8f63}
+.choices button.wrong{background:linear-gradient(180deg,#f9dfdb 85%,#d99089 85%);box-shadow:0 3px 0 #a05a52}
+.choices button.dim{opacity:.45}
+.judge{text-align:center;font-size:22px;font-weight:800;margin:12px 0 4px;min-height:30px}
+.judge.ok{color:#8fe6ae}.judge.ng{color:#ff9d92}
+.explain{background:rgba(255,255,255,.08);border-left:3px solid var(--gold);
+  border-radius:0 8px 8px 0;padding:10px 12px;font-size:13.5px;margin:8px 0;display:none}
+.explain.on{display:block}
+.next-btn,.start-btn{
+  display:block;margin:16px auto 0;border:0;cursor:pointer;border-radius:8px;
+  padding:12px 34px;font-size:16px;font-weight:800;letter-spacing:.1em;
+  background:linear-gradient(180deg,#f3d488 80%,var(--gold) 80%);color:#4a3208;
+  box-shadow:0 3px 0 #9a6f1e,0 5px 8px rgba(0,0,0,.35);
+}
+.next-btn:active,.start-btn:active{transform:translateY(2px)}
+.result{text-align:center;padding:24px 0}
+.result .rank{font-size:44px;font-weight:800;color:var(--gold-soft);margin:6px 0}
+.result .msg{font-size:14px;color:#e6efe9;margin-top:6px}
+.legend{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin:8px 0 2px}
+footer{text-align:center;font-size:11px;color:#6f9484;margin-top:30px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1 class="serif">役マスター道場</h1>
+  <div class="sub">雀魂で勝つための役おぼえゲーム</div>
+  <div class="rule"></div>
+</header>
+
+<nav>
+  <button class="on" data-tab="guide">牌・用語</button>
+  <button data-tab="zukan">役図鑑</button>
+  <button data-tab="naki">鳴きクイズ</button>
+  <button data-tab="atete">役当て</button>
+</nav>
+
+<!-- ============ 牌・用語図解 ============ -->
+<section id="guide" class="on">
+  <div class="panel">
+    <h2>まずは牌の種類</h2>
+    <p>麻雀の牌は「数牌3種類 × 1〜9」＋「字牌7種類」の合計34種類。各4枚ずつあります。</p>
+  </div>
+  <div id="tile-guide"></div>
+  <div class="panel">
+    <h2>用語図解</h2>
+    <p>役の説明に出てくる言葉を、牌の絵で覚えましょう。上から順に読むのがおすすめ。</p>
+  </div>
+  <div id="term-guide"></div>
+</section>
+
+<!-- ============ 図鑑 ============ -->
+<section id="zukan">
+  <div class="panel starter">
+    <h2>まずこの3役だけ覚えれば和了れる</h2>
+    <ul>
+      <li><b>リーチ</b> … 鳴かずにテンパイしたら宣言するだけ。考えなくていい最強の役。</li>
+      <li><b>タンヤオ</b> … 1・9・字牌を使わない。<b>鳴いてもOK</b>なので初心者の鳴き先はほぼコレ。</li>
+      <li><b>役牌</b> … 白・發・中(＋場風・自風)を3枚集めるだけ。<b>ポンしてOK</b>。</li>
+    </ul>
+    <p class="hint" style="margin-top:8px">カードをタップすると説明と牌姿の例が開きます。</p>
+  </div>
+
+  <div class="legend">
+    <span class="badge b-ok">鳴いてOK</span>
+    <span class="badge b-down">鳴くと翻が下がる</span>
+    <span class="badge b-no">門前限定</span>
+  </div>
+  <div class="filters" id="filters">
+    <button class="on" data-f="all">すべて</button>
+    <button data-f="ok">鳴いてOK</button>
+    <button data-f="down">鳴くと下がる</button>
+    <button data-f="no">門前限定</button>
+    <button data-f="yakuman">役満</button>
+  </div>
+  <div id="zukan-list"></div>
+</section>
+
+<!-- ============ 鳴きクイズ ============ -->
+<section id="naki">
+  <div class="panel">
+    <h2>この役、鳴いてもいい？</h2>
+    <p>役の名前を見て「鳴いてOK」「鳴くと1翻下がる」「門前限定(鳴いたら消える)」の3択で答えます。全10問。</p>
+  </div>
+  <div id="naki-game"></div>
+</section>
+
+<!-- ============ 役当てクイズ ============ -->
+<section id="atete">
+  <div class="panel">
+    <h2>この手、なんの役？</h2>
+    <p>和了形の牌姿を見て役名を当てます。全10問。分からない牌があったら「牌・用語」タブで確認！</p>
+  </div>
+  <div id="atete-game"></div>
+</section>
+
+<footer>役マスター道場 — 雀魂の標準ルール(食い下がりあり)準拠</footer>
+</div>
+
+<script>
+/* ============================================================
+   牌のSVGレンダリング
+============================================================ */
+const KANJI = ["","一","二","三","四","五","六","七","八","九"];
+const HONOR = {1:"東",2:"南",3:"西",4:"北",5:"白",6:"發",7:"中"};
+const SERIF = '"Hiragino Mincho ProN","Yu Mincho",serif';
+
+function pinDot(x,y,r,color){
+  return `<circle cx="${x}" cy="${y}" r="${r}" fill="none" stroke="${color}" stroke-width="${Math.max(5,Math.round(r*0.5))}"/>`
+       + `<circle cx="${x}" cy="${y}" r="${Math.max(2.5,r*0.22)}" fill="${color}"/>`;
+}
+const PIN_POS={
+ 1:[[50,70]],
+ 2:[[50,38],[50,102]],
+ 3:[[28,34],[50,70],[72,106]],
+ 4:[[30,40],[70,40],[30,100],[70,100]],
+ 5:[[28,36],[72,36],[50,70],[28,104],[72,104]],
+ 6:[[32,36],[68,36],[32,70],[68,70],[32,104],[68,104]],
+ 7:[[24,26],[50,32],[76,38],[32,84],[68,84],[32,116],[68,116]],
+ 8:[[32,26],[68,26],[32,58],[68,58],[32,90],[68,90],[32,122],[68,122]],
+ 9:[[26,34],[50,34],[74,34],[26,70],[50,70],[74,70],[26,106],[50,106],[74,106]]
+};
+const PIN_R={1:30,2:17,3:15,4:16,5:15,6:13,7:12,8:12,9:11};
+function pinSVG(n){
+  if(n===1){
+    return `<circle cx="50" cy="70" r="32" fill="none" stroke="#2b5f9e" stroke-width="9"/>`
+         + `<circle cx="50" cy="70" r="15" fill="#c43a2f"/>`;
+  }
+  const r=PIN_R[n];
+  return PIN_POS[n].map((p,i)=>{
+    let c="#2b5f9e";
+    if(n===5 && i===2) c="#c43a2f";                 /* 5筒の中央は赤 */
+    if(n===3 && i===1) c="#c43a2f";
+    if(n===7 && i<3)   c="#2e7d46";                 /* 7筒の斜め列 */
+    return pinDot(p[0],p[1],r,c);
+  }).join("");
+}
+
+function stick(x,y,h,color){
+  const w=10;
+  return `<rect x="${x-w/2}" y="${y-h/2}" width="${w}" height="${h}" rx="4.5" fill="${color}"/>`
+       + `<rect x="${x-w/2}" y="${y-2}" width="${w}" height="4" fill="rgba(255,255,255,.55)"/>`;
+}
+const SOU_POS={
+ 2:[[50,40],[50,100]],
+ 3:[[50,34],[32,104],[68,104]],
+ 4:[[32,40],[68,40],[32,100],[68,100]],
+ 5:[[30,38],[70,38],[50,70],[30,104],[70,104]],
+ 6:[[30,40],[50,40],[70,40],[30,100],[50,100],[70,100]],
+ 7:[[50,28],[30,82],[50,82],[70,82],[30,118],[50,118],[70,118]],
+ 8:[[20,40],[40,40],[60,40],[80,40],[20,100],[40,100],[60,100],[80,100]],
+ 9:[[28,32],[50,32],[72,32],[28,70],[50,70],[72,70],[28,108],[50,108],[72,108]]
+};
+function souSVG(n){
+  if(n===1){ /* 一索は鳥 */
+    return `<path d="M38 106 L24 130 M46 108 L44 132 M54 106 L68 128" stroke="#2e7d46" stroke-width="7" fill="none" stroke-linecap="round"/>`
+         + `<ellipse cx="46" cy="80" rx="18" ry="27" fill="#2e7d46" transform="rotate(-14 46 80)"/>`
+         + `<circle cx="61" cy="42" r="12" fill="#c43a2f"/>`
+         + `<polygon points="71,39 86,44 71,49" fill="#d9a441"/>`
+         + `<circle cx="63" cy="39" r="2.6" fill="#fff"/>`;
+  }
+  const h=n>=7?26:30;
+  return SOU_POS[n].map((p,i)=>{
+    let c="#2e7d46";
+    if(n===5 && i===2) c="#c43a2f";
+    if(n===7 && i===0) c="#c43a2f";
+    if(n===9 && i>=3 && i<=5) c="#c43a2f";
+    return stick(p[0],p[1],h,c);
+  }).join("");
+}
+
+function manSVG(n){
+  return `<text x="50" y="62" font-size="56" font-weight="700" text-anchor="middle" fill="#1f2a52" font-family='${SERIF}'>${KANJI[n]}</text>`
+       + `<text x="50" y="126" font-size="50" font-weight="700" text-anchor="middle" fill="#b03028" font-family='${SERIF}'>萬</text>`;
+}
+function honorSVG(n){
+  if(n===5){ /* 白 */
+    return `<rect x="22" y="26" width="56" height="88" rx="9" fill="none" stroke="#8fb0d3" stroke-width="6"/>`;
+  }
+  const color = n===7 ? "#c43a2f" : n===6 ? "#2e7d46" : "#2b2b26";
+  return `<text x="50" y="94" font-size="72" font-weight="700" text-anchor="middle" fill="${color}" font-family='${SERIF}'>${HONOR[n]}</text>`;
+}
+function tileHTML(t){
+  const inner = t.s==="m" ? manSVG(t.n) : t.s==="p" ? pinSVG(t.n) : t.s==="s" ? souSVG(t.n) : honorSVG(t.n);
+  return `<div class="tile"><svg viewBox="0 0 100 140" role="img">${inner}</svg></div>`;
+}
+function parseHand(str){
+  const tiles=[]; const re=/(\d+)([mpsz])/g; let m;
+  while((m=re.exec(str))!==null){ for(const ch of m[1]) tiles.push({n:+ch, s:m[2]}); }
+  return tiles;
+}
+function handHTML(str){ return `<div class="hand">${parseHand(str).map(tileHTML).join("")}</div>`; }
+function tilesRaw(str){ return parseHand(str).map(tileHTML).join(""); }
+
+/* ============================================================
+   牌ガイド
+============================================================ */
+(function(){
+  const g=document.getElementById("tile-guide");
+  const HONOR_READ=["トン<br>(東)","ナン<br>(南)","シャー<br>(西)","ペー<br>(北)","ハク<br>(白)","ハツ<br>(發)","チュン<br>(中)"];
+  let html="";
+  const suits=[
+    ["m","萬子(マンズ)","漢数字＋「萬」。ワンズとも呼びます。"],
+    ["p","筒子(ピンズ)","丸(コイン)の数がそのまま数字。"],
+    ["s","索子(ソーズ)","竹の本数が数字。<b>1索だけは鳥のイラスト</b>なので注意！"]
+  ];
+  suits.forEach(([s,name,desc])=>{
+    html+=`<div class="term-card">
+      <span class="t-name">${name}</span>
+      <div class="trow">${[1,2,3,4,5,6,7,8,9].map(n=>tileHTML({n,s})).join("")}</div>
+      <p>${desc}</p>
+    </div>`;
+  });
+  html+=`<div class="term-card">
+    <span class="t-name">字牌(ジハイ)</span>
+    <div class="trow">${[1,2,3,4,5,6,7].map((n,i)=>`<div class="tcol">${tileHTML({n,s:"z"})}<span class="tlabel" style="color:#8a8474">${HONOR_READ[i]}</span></div>`).join("")}</div>
+    <p>東・南・西・北を<b>風牌(カゼハイ)</b>、白・發・中を<b>三元牌(サンゲンパイ)</b>と呼びます。</p>
+    <div class="imp"><b>重要:</b> 白・發・中は3枚集めるだけで役(役牌)。東〜北は「場風」または「自分の席の風」と一致したときだけ役になります。</div>
+  </div>`;
+  g.innerHTML=html;
+})();
+
+/* ============================================================
+   用語図解
+============================================================ */
+const TERMS=[
+ {n:"面子", r:"メンツ", d:"3枚1組のグループのこと。「順子」か「刻子」の2種類があります。和了るには面子が4つ必要。"},
+ {n:"順子", r:"シュンツ", ex:"456m", d:"同じ種類の連続する3枚。例は「四五六萬」。チーで作れるのはこれ。",
+  imp:"891→912のような「9をまたぐ」つながりはNG。字牌に順子はありません。"},
+ {n:"刻子", r:"コーツ", ex:"777p", d:"まったく同じ牌3枚。例は「7筒が3枚」。ポンで作れるのはこれ。"},
+ {n:"雀頭", r:"ジャントウ / アタマ", ex:"99s", d:"同じ牌2枚のペア。和了形に必ず1組だけ必要です。"},
+ {n:"和了形", r:"ホーラけい / あがり",
+  groups:[["123m","順子"],["456p","順子"],["777s","刻子"],["234s","順子"],["99m","雀頭"]],
+  d:"基本の和了形 ＝ <b>面子4つ ＋ 雀頭1つ</b>(3×4＋2＝14枚)。この形＋何かの役が付いて、初めて和了れます。",
+  imp:"例外は七対子(ペア7組)と国士無双だけ。まずはこの「4面子1雀頭」を体に入れましょう。"},
+ {n:"門前", r:"メンゼン", d:"一度もポン・チー・(明)カンをしていない状態。<b>リーチ・ピンフ・ツモ・七対子などは門前でないと成立しません。</b>"},
+ {n:"鳴き(ポン・チー・カン)", r:"なき / 副露(フーロ)",
+  groups:[["555z","ポン=刻子"],["345p","チー=順子"],["1111m","カン=4枚"]],
+  d:"他の人の捨て牌をもらって面子を完成させること。<b>ポン</b>は誰からでもOK、<b>チー</b>は左隣の人からだけ。",
+  imp:"鳴くと早くなる代わりに、門前限定の役が消え、一部の役は翻が下がります(食い下がり)。だから「鳴いていい役か」の判断が大事！"},
+ {n:"テンパイ", r:"聴牌", ex:"234m567m345p88s6s7s",
+  d:"あと1枚で和了れる状態。例の手は5索か8索が来れば和了(6索7索の両面待ち)。門前でテンパイしたらリーチのチャンス。"},
+ {n:"食い下がり", r:"くいさがり", d:"鳴くと翻数が1つ下がるルール。例: 混一色は門前3翻→鳴くと2翻。役自体は消えないのがポイント。"},
+ {n:"ドラ", r:"どら", d:"持っているだけで1翻ずつ加算されるボーナス牌。表示牌の「次の牌」がドラ。",
+  imp:"ドラは役ではないので、<b>ドラだけでは和了れません。</b>必ず何か1つ役が必要です。"},
+];
+(function(){
+  const g=document.getElementById("term-guide");
+  g.innerHTML=TERMS.map(t=>{
+    let vis="";
+    if(t.ex) vis=`<div class="hand">${tilesRaw(t.ex)}</div>`;
+    if(t.groups) vis=`<div class="ghand">${t.groups.map(([h,l])=>`<div class="grp"><div class="tiles">${tilesRaw(h)}</div><span class="glabel">${l}</span></div>`).join("")}</div>`;
+    return `<div class="term-card">
+      <span class="t-name">${t.n}</span><span class="t-read">${t.r}</span>
+      ${vis}
+      <p>${t.d}</p>
+      ${t.imp?`<div class="imp"><b>ポイント:</b> ${t.imp}</div>`:""}
+    </div>`;
+  }).join("");
+})();
+
+/* ============================================================
+   役データベース (naki: ok=鳴いてOK / down=食い下がり / no=門前限定)
+   ex: 牌姿の例
+============================================================ */
+const YAKU = [
+// --- 1翻 ---
+{cat:"1翻", name:"リーチ", read:"りーち", han:"1翻", naki:"no",
+ desc:"鳴かずにテンパイしたら1000点払って宣言。裏ドラのチャンスも付く。",
+ tip:"迷ったら即リーチでOK。初心者の和了の半分はこれ。"},
+{cat:"1翻", name:"門前清自摸和(ツモ)", read:"めんぜんつも", han:"1翻", naki:"no",
+ desc:"鳴かずに自分でツモって和了。それだけで1翻。",
+ tip:"リーチ＋ツモで自動的に2翻。"},
+{cat:"1翻", name:"平和(ピンフ)", read:"ぴんふ", han:"1翻", naki:"no",
+ ex:"123m456m234p678s99s", exl:"全部順子・雀頭は数牌・両面待ち",
+ desc:"順子4つ＋役牌以外の雀頭＋両面待ち。刻子(同じ牌3枚)が1つでもあるとダメ。",
+ tip:"条件が多く最初は難しい。「全部順子で両面待ちならピンフかも」程度でOK。"},
+{cat:"1翻", name:"断幺九(タンヤオ)", read:"たんやおちゅー", han:"1翻", naki:"ok",
+ ex:"234m555m345p678s88s", exl:"1・9・字牌がどこにもない",
+ desc:"1・9・字牌を1枚も使わない。2〜8の数牌だけで作る。",
+ tip:"鳴いてもOKな超重要役。ポン・チーするならまずタンヤオを目指す。"},
+{cat:"1翻", name:"役牌(白・發・中/風牌)", read:"やくはい", han:"1翻", naki:"ok",
+ ex:"555z234m567p456s99m", exl:"白の刻子だけで役が付く",
+ desc:"白・發・中、または場風牌・自風牌を3枚揃える。",
+ tip:"2枚持ってたら即ポンでOK。鳴いて一番安全に役が付く。"},
+{cat:"1翻", name:"一盃口(イーペーコー)", read:"いーぺーこー", han:"1翻", naki:"no",
+ ex:"223344m567p678s88p", exl:"234萬＋234萬の同じ順子2組",
+ desc:"まったく同じ順子を2組作る(例: 223344は234+234)。",
+ tip:"鳴いたら消えるので注意。狙うというより「気づいたら付いてる」役。"},
+{cat:"1翻", name:"一発", read:"いっぱつ", han:"1翻", naki:"no",
+ desc:"リーチ後、1巡以内(鳴きなし)に和了すると付くおまけ。",
+ tip:"狙うものではなく運。リーチのご褒美。"},
+{cat:"1翻", name:"嶺上開花・海底・河底・搶槓", read:"ぐうぜんやく", han:"各1翻", naki:"ok",
+ desc:"カン後のツモ和了、最後の1枚での和了など、状況で付く偶然役。",
+ tip:"覚えなくても勝敗にほぼ影響なし。後回しでOK。"},
+// --- 2翻 ---
+{cat:"2翻", name:"ダブルリーチ", read:"だぶるりーち", han:"2翻", naki:"no",
+ desc:"配牌からいきなりテンパイして最初の捨て牌でリーチ。",
+ tip:"来たらラッキー。普通のリーチ＋1翻。"},
+{cat:"2翻", name:"七対子(チートイツ)", read:"ちーといつ", han:"2翻", naki:"no",
+ ex:"1133m5577p99s2255z", exl:"同じ牌のペア×7組",
+ desc:"同じ牌2枚のペアを7組作る特殊形。",
+ tip:"手がバラバラでペアだらけのときの逃げ道。鳴いたら絶対に作れない。"},
+{cat:"2翻", name:"対々和(トイトイ)", read:"といといほー", han:"2翻", naki:"ok",
+ ex:"222m555p777s111z99m", exl:"面子4つが全部刻子",
+ desc:"4つの面子を全部刻子(同じ牌3枚)にする。",
+ tip:"ポンを重ねて作る役。鳴いても2翻のままで強い。"},
+{cat:"2翻", name:"三暗刻", read:"さんあんこー", han:"2翻", naki:"ok",
+ desc:"鳴かずに作った刻子(暗刻)が3組ある。",
+ tip:"役自体は鳴いても消えないが、鳴いた刻子はカウントされない点に注意。"},
+{cat:"2翻", name:"三色同順(サンショク)", read:"さんしょくどうじゅん", han:"2翻→鳴くと1翻", naki:"down",
+ ex:"234m234p234s678m99s", exl:"萬・筒・索に同じ「234」",
+ desc:"萬・筒・索で同じ数字の順子を作る。",
+ tip:"見えたら狙う価値あり。鳴いても1翻残る。"},
+{cat:"2翻", name:"一気通貫(イッツー)", read:"いっきつうかん", han:"2翻→鳴くと1翻", naki:"down",
+ ex:"123m456m789m345p77s", exl:"萬子で123・456・789",
+ desc:"同じ色で123・456・789を全部作る。",
+ tip:"同じ色が9種類近く揃ってきたら意識する。"},
+{cat:"2翻", name:"混全帯幺九(チャンタ)", read:"ちゃんた", han:"2翻→鳴くと1翻", naki:"down",
+ ex:"123m789p111s999s11z", exl:"どの面子にも1・9・字牌が入っている",
+ desc:"すべての面子と雀頭に1・9・字牌を含める。",
+ tip:"配牌が端っこと字牌だらけのときに。"},
+{cat:"2翻", name:"混老頭・小三元・三色同刻・三槓子", read:"れあやく", han:"各2翻", naki:"ok",
+ desc:"1・9・字牌のみ(混老頭)、白發中のうち2刻子＋1雀頭(小三元)など。いずれも鳴いてOK。",
+ tip:"出現率低め。「鳴いても消えない2翻組」とだけ覚えれば十分。"},
+// --- 3翻以上 ---
+{cat:"3翻以上", name:"二盃口(リャンペーコー)", read:"りゃんぺーこー", han:"3翻", naki:"no",
+ ex:"223344m556677p88s", exl:"一盃口×2組",
+ desc:"一盃口を2組。七対子とは複合しない。",
+ tip:"門前限定。かなりレア。"},
+{cat:"3翻以上", name:"純全帯幺九(ジュンチャン)", read:"じゅんちゃん", han:"3翻→鳴くと2翻", naki:"down",
+ ex:"123m789m123p789s99p", exl:"チャンタの字牌なし版",
+ desc:"すべての面子・雀頭に1か9を含める(字牌は使わない)。",
+ tip:"チャンタより高いが難しい。"},
+{cat:"3翻以上", name:"混一色(ホンイツ)", read:"ほんいつ", han:"3翻→鳴くと2翻", naki:"down",
+ ex:"123m456m888m111z66z", exl:"萬子＋字牌だけ",
+ desc:"1色の数牌＋字牌だけで作る。",
+ tip:"鳴いても2翻＋役牌が絡みやすく高打点。初心者が覚える「鳴いて高い役」の代表。"},
+{cat:"3翻以上", name:"清一色(チンイツ)", read:"ちんいつ", han:"6翻→鳴くと5翻", naki:"down",
+ ex:"123m345m678m999m55m", exl:"萬子オンリー",
+ desc:"1色の数牌だけで作る。役満以外では最高クラス。",
+ tip:"鳴いても5翻＝跳満級。1色に極端に寄ったら狙う。"},
+// --- 役満 ---
+{cat:"役満", name:"国士無双", read:"こくしむそう", han:"役満", naki:"no",
+ ex:"19m19p19s1234567z1m", exl:"1・9・字牌を全種類＋どれか1枚",
+ desc:"1・9・字牌を全13種＋どれか1枚。",
+ tip:"配牌で1・9・字牌が9種類以上あれば挑戦してよし。"},
+{cat:"役満", name:"四暗刻", read:"すーあんこー", han:"役満", naki:"no",
+ ex:"111m333p555s777s99m", exl:"鳴かずに刻子4組",
+ desc:"暗刻を4組。ポンしたら消えるので鳴き厳禁。",
+ tip:"トイトイと親戚。鳴くとトイトイ止まりになる。"},
+{cat:"役満", name:"大三元", read:"だいさんげん", han:"役満", naki:"ok",
+ ex:"555z666z777z234m88s", exl:"白・發・中がすべて刻子",
+ desc:"白・發・中をすべて刻子にする。鳴いてもOK。",
+ tip:"2組目をポンした人がいたら3種目の三元牌は絶対に切らないこと(放銃したら大惨事)。"},
+{cat:"役満", name:"字一色・清老頭・緑一色・九蓮宝燈など", read:"そのたやくまん", han:"役満", naki:"ok",
+ desc:"字牌のみ、1・9のみ、緑の牌のみ…など。一生に数回レベル。",
+ tip:"「そういうのがある」とだけ知っておけばOK。"},
+];
+
+/* 鳴きクイズ用プール */
+const NAKI_POOL = [
+ {n:"リーチ", a:"no", e:"リーチは門前(鳴きなし)が絶対条件。1回でも鳴いたらリーチできません。"},
+ {n:"タンヤオ", a:"ok", e:"タンヤオは鳴いても1翻のまま。鳴き仕掛けの基本役です。"},
+ {n:"役牌(白・發・中)", a:"ok", e:"役牌はポンしてOK。鳴きで役を確定させる代表格。"},
+ {n:"平和(ピンフ)", a:"no", e:"ピンフは門前限定。鳴いた時点で消えます。"},
+ {n:"ツモ(門前清自摸和)", a:"no", e:"名前の通り「門前」の役。鳴いたらツモ和了しても付きません。"},
+ {n:"一盃口", a:"no", e:"一盃口は門前限定。同じ順子2組ができていても鳴いていたら無効。"},
+ {n:"七対子", a:"no", e:"ペア7組の特殊形なので、そもそも鳴くと形が作れません。"},
+ {n:"対々和(トイトイ)", a:"ok", e:"トイトイはポンで作る役。鳴いても2翻のままです。"},
+ {n:"三色同順", a:"down", e:"三色は鳴くと2翻→1翻に下がります(食い下がり)。それでも役は残る。"},
+ {n:"一気通貫", a:"down", e:"イッツーも食い下がり。鳴くと2翻→1翻。"},
+ {n:"チャンタ", a:"down", e:"チャンタは鳴くと2翻→1翻。鳴いて作ることも多い役です。"},
+ {n:"純チャン", a:"down", e:"ジュンチャンは鳴くと3翻→2翻に下がります。"},
+ {n:"混一色(ホンイツ)", a:"down", e:"ホンイツは鳴くと3翻→2翻。それでも十分高く、鳴いて狙う定番。"},
+ {n:"清一色(チンイツ)", a:"down", e:"チンイツは鳴くと6翻→5翻。鳴いても跳満級の破壊力。"},
+ {n:"二盃口", a:"no", e:"一盃口と同じく門前限定です。"},
+ {n:"混老頭", a:"ok", e:"1・9・字牌のみの手。鳴いても2翻のままです。"},
+ {n:"小三元", a:"ok", e:"三元牌がらみの役は鳴いてOK。翻も下がりません。"},
+ {n:"大三元", a:"ok", e:"役満ですが鳴いてOK。白發中はどんどんポンして良い。"},
+ {n:"四暗刻", a:"no", e:"「暗刻」=鳴かずに作った刻子。ポンしたら暗刻でなくなるため実質門前限定。"},
+ {n:"ダブルリーチ", a:"no", e:"リーチの強化版なので当然門前限定です。"},
+];
+
+/* 役当てクイズ用 (牌姿) */
+const HANDS = [
+ {t:"234m555m345p678s88s", cap:"", a:"タンヤオ", c:["ピンフ","チャンタ","一気通貫"],
+  e:"1・9・字牌が1枚もない=タンヤオ。刻子(555萬)があるのでピンフではありません。"},
+ {t:"123m456m234p678s99s", cap:"※6索-9索の両面待ちで和了", a:"平和(ピンフ)", c:["タンヤオ","一盃口","三色同順"],
+  e:"全部順子＋数牌の雀頭＋両面待ち=ピンフ。1と9は使ってもOK(タンヤオと混同注意)。"},
+ {t:"223344m567p678s88p", cap:"", a:"一盃口", c:["七対子","二盃口","ピンフ"],
+  e:"223344萬=「234＋234」の同じ順子2組で一盃口。ペアが多く見えても七対子ではありません。"},
+ {t:"234m567p456s99m555z", cap:"", a:"役牌(白)", c:["タンヤオ","混一色","小三元"],
+  e:"白の刻子があるので役牌1翻。字牌が入った時点でタンヤオは消えます。"},
+ {t:"222m555p777s99m111z", cap:"※東はポンして完成", a:"対々和(トイトイ)", c:["三色同刻","チャンタ","混老頭"],
+  e:"面子4つがすべて刻子=トイトイ。ポンを重ねて作れる、鳴きOKの2翻役です。"},
+ {t:"234m234p234s678m99s", cap:"", a:"三色同順", c:["一気通貫","一盃口","ピンフ"],
+  e:"萬・筒・索に同じ234=三色同順。門前2翻、鳴くと1翻。"},
+ {t:"123m456m789m345p77s", cap:"", a:"一気通貫", c:["三色同順","清一色","チャンタ"],
+  e:"萬子で123+456+789=イッツー。1色に3面子寄ったら意識しましょう。"},
+ {t:"123m789p111s999s11z", cap:"", a:"チャンタ", c:["純チャン","混老頭","国士無双"],
+  e:"すべての面子・雀頭に1・9・字牌が含まれる=チャンタ。東(字牌)があるので純チャンではない。"},
+ {t:"123m456m888m111z66z", cap:"", a:"混一色(ホンイツ)", c:["清一色","チャンタ","字一色"],
+  e:"萬子＋字牌だけ=ホンイツ。おまけに東と發で役牌も複合して高い！"},
+ {t:"123m345m678m999m55m", cap:"", a:"清一色(チンイツ)", c:["混一色","一気通貫","九蓮宝燈"],
+  e:"萬子オンリー=チンイツ6翻。字牌が混ざるとホンイツに格下げです。"},
+ {t:"1133m5577p99s2255z", cap:"", a:"七対子", c:["一盃口","二盃口","トイトイ"],
+  e:"ペア7組の特殊形。門前限定・2翻25符。"},
+ {t:"19m19p19s1234567z1m", cap:"", a:"国士無双", c:["混老頭","字一色","チャンタ"],
+  e:"1・9・字牌13種＋1枚=役満・国士無双。"},
+ {t:"234m88s555z666z777z", cap:"", a:"大三元", c:["小三元","字一色","混一色"],
+  e:"白・發・中すべて刻子=役満。鳴いてもOKな役満です。"},
+ {t:"111m333p555s777s99m", cap:"※すべて暗刻でツモ和了", a:"四暗刻", c:["トイトイ","三暗刻","清老頭"],
+  e:"鳴かずに刻子4組=役満・四暗刻。1つでもポンするとトイトイ止まりに。"},
+];
+
+/* ============ タブ ============ */
+document.querySelectorAll("nav button").forEach(b=>{
+  b.onclick=()=>{
+    document.querySelectorAll("nav button").forEach(x=>x.classList.remove("on"));
+    document.querySelectorAll("section").forEach(x=>x.classList.remove("on"));
+    b.classList.add("on");
+    document.getElementById(b.dataset.tab).classList.add("on");
+    window.scrollTo({top:0});
+  };
+});
+
+/* ============ 図鑑 ============ */
+const NAKI_BADGE={ok:'<span class="badge b-ok">鳴いてOK</span>',
+  down:'<span class="badge b-down">鳴くと下がる</span>',
+  no:'<span class="badge b-no">門前限定</span>'};
+function renderZukan(filter){
+  const list=document.getElementById("zukan-list");
+  let html=""; let lastCat="";
+  YAKU.forEach((y,i)=>{
+    if(filter==="yakuman"){ if(y.cat!=="役満") return; }
+    else if(filter!=="all" && y.naki!==filter) return;
+    if(y.cat!==lastCat){ html+=`<div class="cat-title serif">${y.cat}</div>`; lastCat=y.cat; }
+    html+=`
+    <div class="yaku-card" data-i="${i}">
+      <div class="yaku-head">
+        <div><div class="name">${y.name}</div><div class="read">${y.read}</div></div>
+        <div class="spacer"></div>
+        <span class="badge b-han">${y.han}</span>
+        ${NAKI_BADGE[y.naki]}
+      </div>
+      <div class="yaku-body">
+        <p>${y.desc}</p>
+        ${y.ex?handHTML(y.ex)+`<div class="exlabel">▲ ${y.exl||"例"}</div>`:""}
+        <div class="tip"><b>コツ:</b> ${y.tip}</div>
+      </div>
+    </div>`;
+  });
+  if(!html) html='<p class="hint" style="text-align:center;margin-top:20px">該当なし</p>';
+  list.innerHTML=html;
+  list.querySelectorAll(".yaku-card").forEach(c=>{ c.onclick=()=>c.classList.toggle("open"); });
+}
+document.querySelectorAll("#filters button").forEach(b=>{
+  b.onclick=()=>{
+    document.querySelectorAll("#filters button").forEach(x=>x.classList.remove("on"));
+    b.classList.add("on"); renderZukan(b.dataset.f);
+  };
+});
+renderZukan("all");
+
+/* ============ クイズ共通 ============ */
+function shuffle(a){a=[...a];for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+function resultHTML(score,total){
+  let rank,msg;
+  const r=score/total;
+  if(r===1){rank="役満級！";msg="完璧です。もう卓上で迷いません。";}
+  else if(r>=0.8){rank="跳満級";msg="ほぼマスター。間違えた問題だけ図鑑で復習を。";}
+  else if(r>=0.6){rank="満貫級";msg="いい感じ。あと一歩！";}
+  else if(r>=0.4){rank="2翻";msg="図鑑を読んでからもう一周してみましょう。";}
+  else{rank="ノーテン";msg="大丈夫、「牌・用語」タブと図鑑の「まずこの3役」から始めましょう。";}
+  return `<div class="result">
+    <div class="hint">結果</div>
+    <div class="rank serif">${rank}</div>
+    <div class="q-score">${score} / ${total} 問正解</div>
+    <div class="msg">${msg}</div>
+    <button class="start-btn" onclick="this.dispatchEvent(new CustomEvent('retry',{bubbles:true}))">もう一度</button>
+  </div>`;
+}
+
+/* ============ 鳴きクイズ ============ */
+const nakiEl=document.getElementById("naki-game");
+let nq=[], ni=0, nScore=0;
+const NAKI_LABEL={ok:"鳴いてOK！",down:"鳴くと1翻下がる",no:"門前限定(鳴いたら消える)"};
+function nakiStart(){
+  nq=shuffle(NAKI_POOL).slice(0,10); ni=0; nScore=0; nakiQ();
+}
+function nakiQ(){
+  if(ni>=nq.length){ nakiEl.innerHTML=resultHTML(nScore,nq.length); return; }
+  const q=nq[ni];
+  nakiEl.innerHTML=`
+    <div class="q-top"><span class="q-num">第 ${ni+1} / ${nq.length} 問</span><span class="q-score">正解 ${nScore}</span></div>
+    <div class="q-name serif">${q.n}</div>
+    <div class="q-question">この役、鳴いてもいい？</div>
+    <div class="choices">
+      ${["ok","down","no"].map(k=>`<button data-k="${k}">${NAKI_LABEL[k]}</button>`).join("")}
+    </div>
+    <div class="judge"></div>
+    <div class="explain"></div>`;
+  nakiEl.querySelectorAll(".choices button").forEach(b=>{
+    b.onclick=()=>{
+      const ok=b.dataset.k===q.a;
+      if(ok)nScore++;
+      nakiEl.querySelectorAll(".choices button").forEach(x=>{
+        x.disabled=true;
+        if(x.dataset.k===q.a)x.classList.add("correct");
+        else if(x===b)x.classList.add("wrong");
+        else x.classList.add("dim");
+      });
+      const j=nakiEl.querySelector(".judge");
+      j.textContent=ok?"正解！":"残念…";
+      j.className="judge "+(ok?"ok":"ng");
+      const ex=nakiEl.querySelector(".explain");
+      ex.textContent=q.e; ex.classList.add("on");
+      const nb=document.createElement("button");
+      nb.className="next-btn"; nb.textContent=ni+1>=nq.length?"結果を見る":"次の問題";
+      nb.onclick=()=>{ni++;nakiQ();};
+      nakiEl.appendChild(nb);
+      nakiEl.querySelector(".q-score").textContent="正解 "+nScore;
+    };
+  });
+}
+nakiEl.addEventListener("retry",nakiStart);
+nakiStart();
+
+/* ============ 役当てクイズ ============ */
+const ateteEl=document.getElementById("atete-game");
+let aq=[], ai=0, aScore=0;
+function ateteStart(){
+  aq=shuffle(HANDS).slice(0,10); ai=0; aScore=0; ateteQ();
+}
+function ateteQ(){
+  if(ai>=aq.length){ ateteEl.innerHTML=resultHTML(aScore,aq.length); return; }
+  const q=aq[ai];
+  const choices=shuffle([q.a,...q.c]);
+  ateteEl.innerHTML=`
+    <div class="q-top"><span class="q-num">第 ${ai+1} / ${aq.length} 問</span><span class="q-score">正解 ${aScore}</span></div>
+    ${handHTML(q.t)}
+    ${q.cap?`<div class="q-caption">${q.cap}</div>`:""}
+    <div class="q-question">この手に付いている役は？</div>
+    <div class="choices">
+      ${choices.map(c=>`<button data-a="${c}">${c}</button>`).join("")}
+    </div>
+    <div class="judge"></div>
+    <div class="explain"></div>`;
+  ateteEl.querySelectorAll(".choices button").forEach(b=>{
+    b.onclick=()=>{
+      const ok=b.dataset.a===q.a;
+      if(ok)aScore++;
+      ateteEl.querySelectorAll(".choices button").forEach(x=>{
+        x.disabled=true;
+        if(x.dataset.a===q.a)x.classList.add("correct");
+        else if(x===b)x.classList.add("wrong");
+        else x.classList.add("dim");
+      });
+      const j=ateteEl.querySelector(".judge");
+      j.textContent=ok?"正解！":"残念…";
+      j.className="judge "+(ok?"ok":"ng");
+      const ex=ateteEl.querySelector(".explain");
+      ex.textContent=q.e; ex.classList.add("on");
+      const nb=document.createElement("button");
+      nb.className="next-btn"; nb.textContent=ai+1>=aq.length?"結果を見る":"次の問題";
+      nb.onclick=()=>{ai++;ateteQ();};
+      ateteEl.appendChild(nb);
+      ateteEl.querySelector(".q-score").textContent="正解 "+aScore;
+    };
+  });
+}
+ateteEl.addEventListener("retry",ateteStart);
+ateteStart();
+</script>
+</body>
+</html>

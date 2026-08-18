@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>四人打ち麻雀 〜NPC対局場〜</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="start-screen">
+  <h1 class="serif">四人打ち麻雀</h1>
+  <div class="sub">時間制限なし・NPC3人と対局</div>
+
+  <div class="mode-cards">
+    <div class="mode-card" data-mode="east1">
+      <b>お試し (東1局のみ)</b>
+      <p>1局だけサクッと遊ぶ。ルールを試したい人向け。</p>
+    </div>
+    <div class="mode-card on" data-mode="tonpuu">
+      <b>東風戦 (東1〜4局)</b>
+      <p>いちばん標準的な短めの対局。</p>
+    </div>
+    <div class="mode-card" data-mode="hanchan">
+      <b>半荘戦 (東・南 各4局)</b>
+      <p>じっくり遊びたい人向けのフル対局。</p>
+    </div>
+  </div>
+
+  <button class="big-btn" id="btn-start">対局開始</button>
+  <div class="linkline">役を覚えたい人はまず <a href="../yaku-dojo.html">役マスター道場</a> へ</div>
+</div>
+
+<div id="game-screen">
+  <div class="topbar">
+    <span>四人打ち麻雀</span>
+    <span>
+      <a href="../yaku-dojo.html" target="_blank"><button type="button">役一覧</button></a>
+      <button type="button" id="btn-restart">やめる</button>
+    </span>
+  </div>
+
+  <div class="table" id="table"></div>
+
+  <div id="log-panel"></div>
+
+  <div class="bottom-area">
+    <div class="bottom-hand-wrap" id="my-hand"></div>
+    <div class="bottom-melds" id="my-melds"></div>
+  </div>
+
+  <div class="action-bar" id="action-bar"></div>
+</div>
+
+<div class="modal-overlay" id="modal-overlay"></div>
+
+<script src="engine.js"></script>
+<script src="game.js"></script>
+<script src="tiles.js"></script>
+<script src="ui.js"></script>
+</body>
+</html>
