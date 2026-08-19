@@ -25,11 +25,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 事前に一度だけ、リポジトリの Settings > Pages で
+      # Source を "GitHub Actions" にしておく必要があります。
+      # (Pages サイトの作成には管理者権限が必要で、GITHUB_TOKEN では作成できません)
       - name: Configure Pages
         uses: actions/configure-pages@v5
-        with:
-          # リポジトリで Pages が未設定でも、このワークフローから有効化する
-          enablement: true
 
       - name: Upload site
         uses: actions/upload-pages-artifact@v3

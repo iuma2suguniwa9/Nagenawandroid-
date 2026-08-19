@@ -33,6 +33,25 @@
 - **狙える役** — 今の手から現実的に狙える役と、その達成度
 - **危険牌の色分け** — リーチ者に対する現物／スジ／無スジを判定して手牌に着色
 
+## スマホで遊べるように公開する（初回だけ手作業が必要）
+
+GitHub Pages で公開する設定は入っていますが、**Pages の有効化だけは
+リポジトリの管理者しかできません**（ワークフローのトークンでは作成できない）。
+次の1回だけ操作してください。
+
+1. GitHub でこのリポジトリを開く
+2. **Settings** → 左メニューの **Pages**
+3. **Build and deployment** の **Source** を **GitHub Actions** に変更
+
+これだけで、以後 push するたびに自動でデプロイされます。公開URLは
+
+```
+https://iuma2suguniwa9.github.io/Nagenawandroid-/
+```
+
+有効化した後に一度だけワークフローを走らせたい場合は、
+**Actions** タブ → **Deploy to GitHub Pages** → **Run workflow** で手動実行できます。
+
 ## 開発
 
 依存パッケージなしの素の HTML/CSS/JavaScript です。ローカルで動かす場合:
