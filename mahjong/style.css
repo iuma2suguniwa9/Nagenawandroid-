@@ -95,6 +95,39 @@ a{color:var(--gold-soft)}
 
 #log-panel{font-size:11px;color:#a9c8ba;background:rgba(0,0,0,.2);border-radius:8px;margin:6px 10px;padding:6px 10px;max-height:70px;overflow-y:auto}
 
+/* ---------- アシストパネル ---------- */
+.assist-opt{display:flex;gap:9px;align-items:flex-start;text-align:left;
+  background:rgba(255,255,255,.06);border:1px solid var(--felt-line);border-radius:10px;
+  padding:12px 14px;margin-top:14px;cursor:pointer;font-size:13.5px}
+.assist-opt input{margin-top:2px;width:17px;height:17px;accent-color:var(--gold);flex:0 0 auto}
+.assist-opt small{display:block;font-size:11.5px;color:#a9c8ba;margin-top:2px;line-height:1.5}
+.assist-toggle.off{opacity:.5}
+
+#assist-panel{margin:4px 10px 0}
+.assist-box{background:rgba(0,0,0,.28);border:1px solid var(--felt-line);border-radius:9px;
+  padding:8px 10px;font-size:12px}
+.assist-row{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:5px}
+.assist-row:last-child{margin-bottom:0}
+.assist-tag{font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:10px;
+  background:var(--felt-line);color:#d9ece2;flex:0 0 auto}
+.assist-tag.hot{background:var(--gold);color:#4a3208}
+.assist-tag.warn{background:#8c2f27;color:#ffd9d4}
+.assist-tile{display:flex;align-items:center;gap:2px}
+.assist-tile .tile{width:20px;height:28px;border-radius:3px}
+.assist-note{color:#cfe4da;line-height:1.5}
+.assist-rec{display:flex;align-items:center;gap:6px}
+.assist-rec .best{color:var(--gold-soft);font-weight:700}
+.assist-yaku{display:flex;flex-direction:column;gap:3px;margin-top:2px}
+.assist-yaku div{color:#cfe4da;line-height:1.45}
+.assist-yaku b{color:var(--gold-soft)}
+.assist-yaku .done b{color:#8fe6ae}
+.d0{color:#8fe6ae}.d1{color:#cfe4da}.d2{color:#f3d488}.d3{color:#ff9d92}
+/* 危険度に応じた手牌の下線 */
+.hand-tile.danger3{box-shadow:0 2px 3px rgba(0,0,0,.35),0 0 0 2px #c4443a inset}
+.hand-tile.danger2{box-shadow:0 2px 3px rgba(0,0,0,.35),0 0 0 2px #d9a441 inset}
+.hand-tile.reco{outline:2px solid #8fe6ae;outline-offset:1px}
+.hand-tile.banned{opacity:.35;cursor:not-allowed}
+
 .bottom-area{padding:6px 10px 4px}
 .bottom-hand-wrap{display:flex;justify-content:center;gap:2px;flex-wrap:wrap;min-height:56px}
 .bottom-melds{display:flex;gap:8px;justify-content:center;margin-top:4px}

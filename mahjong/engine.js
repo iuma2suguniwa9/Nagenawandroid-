@@ -321,7 +321,8 @@
     if (allTypesUsed.every(isTerminal)) yakumanList.push({ name: '清老頭', han: 13 });
     if (allTypesUsed.every(isGreenTile)) yakumanList.push({ name: '緑一色', han: 13 });
     if (allMelds.filter(m => m.isKan).length === 4) yakumanList.push({ name: '四槓子', han: 13 });
-    // 九蓮宝燈 (門前・清一色・特定形)
+    // 九蓮宝燈 (門前・清一色・特定形)。和了牌を除いた形が 1112345678999 ちょうどなら
+    // 9面待ち = 純正九蓮宝燈 (雀魂ではダブル役満)。
     if (isMenzen && ctx.openMelds.length === 0) {
       const suits = new Set(allTypesUsed.filter(t => !isHonor(t)).map(typeSuit));
       if (suits.size === 1 && !allTypesUsed.some(isHonor)) {
@@ -331,7 +332,14 @@
         const c = countsFromIds(ctx.handIds);
         let ok = true;
         for (let r = 0; r < 9; r++) if (c[base + r] < need[r]) ok = false;
-        if (ok) yakumanList.push({ name: '九蓮宝燈', han: 13 });
+        if (ok) {
+          const pre = c.slice();
+          pre[winType]--;
+          let junsei = true;
+          for (let r = 0; r < 9; r++) if (pre[base + r] !== need[r]) junsei = false;
+          if (junsei) yakumanList.push({ name: '純正九蓮宝燈', han: 26, units: 2 });
+          else yakumanList.push({ name: '九蓮宝燈', han: 13 });
+        }
       }
     }
 
@@ -469,6 +477,77 @@
     return { kind: 'ron', total };
   }
 
+  // ---------- 向聴数 (シャンテン数) ----------
+  // counts: 34要素。openMeldCount: 副露数。通常形のシャンテン数を返す (0=テンパイ, -1=和了形)。
+  function regularShanten(counts, openMeldCount) {
+    const c = counts.slice();
+    let best = 8;
+    const maxSets = 4 - openMeldCount;
+    function done(sets, partials, hasPair) {
+      const totalSets = sets + openMeldCount;
+      let p = partials;
+      if (totalSets + p > 4) p = 4 - totalSets;
+      const s = 8 - 2 * totalSets - p - (hasPair ? 1 : 0);
+      if (s < best) best = s;
+    }
+    function rec2(i, sets, partials, hasPair) {
+      while (i < 34 && c[i] === 0) i++;
+      if (i >= 34) { done(sets, partials, hasPair); return; }
+      if (sets < maxSets) {
+        if (c[i] >= 3) { c[i] -= 3; rec2(i, sets + 1, partials, hasPair); c[i] += 3; }
+        if (i < 27 && (i % 9) <= 6 && c[i + 1] > 0 && c[i + 2] > 0) {
+          c[i]--; c[i + 1]--; c[i + 2]--;
+          rec2(i, sets + 1, partials, hasPair);
+          c[i]++; c[i + 1]++; c[i + 2]++;
+        }
+      }
+      if (c[i] >= 2) {
+        if (!hasPair) { c[i] -= 2; rec2(i, sets, partials, true); c[i] += 2; }
+        if (sets + openMeldCount + partials < 4) { c[i] -= 2; rec2(i, sets, partials + 1, hasPair); c[i] += 2; }
+      }
+      if (sets + openMeldCount + partials < 4 && i < 27 && (i % 9) <= 7 && c[i + 1] > 0) {
+        c[i]--; c[i + 1]--; rec2(i, sets, partials + 1, hasPair); c[i]++; c[i + 1]++;
+      }
+      if (sets + openMeldCount + partials < 4 && i < 27 && (i % 9) <= 6 && c[i + 2] > 0) {
+        c[i]--; c[i + 2]--; rec2(i, sets, partials + 1, hasPair); c[i]++; c[i + 2]++;
+      }
+      const saved = c[i];
+      c[i] = 0;
+      rec2(i + 1, sets, partials, hasPair);
+      c[i] = saved;
+    }
+    rec2(0, 0, 0, false);
+    return best;
+  }
+
+  function chiitoiShanten(counts) {
+    let pairs = 0, kinds = 0;
+    for (let i = 0; i < 34; i++) {
+      if (counts[i] > 0) kinds++;
+      if (counts[i] >= 2) pairs++;
+    }
+    return 6 - pairs + Math.max(0, 7 - kinds);
+  }
+  function kokushiShanten(counts) {
+    let kinds = 0, hasPair = false;
+    for (const t of KOKUSHI_TYPES) {
+      if (counts[t] > 0) kinds++;
+      if (counts[t] >= 2) hasPair = true;
+    }
+    return 13 - kinds - (hasPair ? 1 : 0);
+  }
+
+  // handIds: 13 - 3*副露数 枚 (ツモ牌を切った後の形)。-1=和了形 0=テンパイ 1=イーシャンテン…
+  function shanten(handIds, openMelds) {
+    const counts = countsFromIds(handIds);
+    const openCount = (openMelds || []).length;
+    let s = regularShanten(counts, openCount);
+    if (openCount === 0) {
+      s = Math.min(s, chiitoiShanten(counts), kokushiShanten(counts));
+    }
+    return s;
+  }
+
   // ---------- チー候補 ----------
   function chiPossibilities(handIds, discardType) {
     if (discardType >= 27) return [];
@@ -489,7 +568,8 @@
     typeLabel, idToType, isRedFive, makeTile, shuffle, countsFromIds, nextDoraType,
     decomposeConcealed, isChiitoitsu, isKokushi, KOKUSHI_TYPES,
     winDecompositions, isComplete, getWaits, isTenpai,
-    evaluateWin, scoreFromHanFu, chiPossibilities
+    evaluateWin, scoreFromHanFu, chiPossibilities,
+    shanten, regularShanten, chiitoiShanten, kokushiShanten
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = MJ;

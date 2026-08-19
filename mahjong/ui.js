@@ -6,12 +6,16 @@
   const T = window.MJTiles;
   const WIND_NAME = window.WIND_NAME || ['東', '南', '西', '北'];
 
+  const A = window.MJAssist;
+
   let game = null;
   let eventQueue = [];
   let processing = false;
   let riichiArmed = false;
   let currentAwait = null; // 直近の await イベント
   let resultQueue = []; // handEnd/gameEnd を溜めて順に表示
+  let assistOn = true;   // アシスト機能のON/OFF
+  let lastAnalysis = null; // 今の手番の解析結果 (手牌のハイライトにも使う)
 
   const $ = sel => document.querySelector(sel);
   const el = (cls, html) => { const e = document.createElement('div'); e.className = cls || ''; if (html !== undefined) e.innerHTML = html; return e; };
@@ -30,12 +34,25 @@
       selectedMode = card.dataset.mode;
     });
   });
-  $('#btn-start').addEventListener('click', () => startGame(selectedMode));
+  $('#btn-start').addEventListener('click', () => {
+    assistOn = $('#opt-assist').checked;
+    startGame(selectedMode);
+  });
   $('#btn-restart').addEventListener('click', () => { closeModal(); showScreen('start'); });
+  $('#btn-assist').addEventListener('click', () => {
+    assistOn = !assistOn;
+    $('#btn-assist').textContent = assistOn ? 'アシストON' : 'アシストOFF';
+    $('#btn-assist').classList.toggle('off', !assistOn);
+    renderAssist();
+    renderAll();
+  });
 
   function startGame(mode) {
     game = new MahjongGame({ mode, humanSeat: 0 });
     eventQueue = []; processing = false; riichiArmed = false; currentAwait = null;
+    lastAnalysis = null;
+    $('#btn-assist').textContent = assistOn ? 'アシストON' : 'アシストOFF';
+    $('#btn-assist').classList.toggle('off', !assistOn);
     game.on(evt => { eventQueue.push(evt); if (!processing) processQueue(); });
     $('#log-panel').innerHTML = '';
     showScreen('game');
@@ -72,8 +89,8 @@
     switch (evt.type) {
       case 'log': appendLog(evt.message); return;
       case 'handStart':
-        riichiArmed = false; currentAwait = null;
-        renderAll(); setActionBar([]); return;
+        riichiArmed = false; currentAwait = null; lastAnalysis = null;
+        renderAll(); renderAssist(); setActionBar([]); return;
       case 'draw': case 'discard': case 'call': case 'rinshanDraw':
         renderAll(); return;
       case 'win':
@@ -88,7 +105,8 @@
         maybeShowNextResult();
         return;
       case 'awaitDiscard':
-        currentAwait = evt; renderAll(); setActionBarForDiscard(evt); return;
+        currentAwait = evt; computeAssist(); renderAll(); renderAssist();
+        setActionBarForDiscard(evt); return;
       case 'awaitTsumoChoice':
         currentAwait = evt; renderAll(); showTsumoModal(evt); return;
       case 'awaitRonChoice':
@@ -99,7 +117,19 @@
         currentAwait = evt; renderAll(); setActionBarForPonKan(evt); return;
       case 'awaitChiChoice':
         currentAwait = evt; renderAll(); setActionBarForChi(evt); return;
+      case 'awaitKyuushuChoice':
+        currentAwait = evt; renderAll(); showKyuushuModal(evt); return;
     }
+  }
+
+  function showKyuushuModal(evt) {
+    openModal(`<div class="modal-box"><h3 class="serif">九種九牌</h3>
+      <p>1・9・字牌が${evt.kinds}種類あります。<br>この局を流して(途中流局)やり直せます。</p>
+      <p style="font-size:12px;color:#666;margin-top:8px">流すと親は連荘（親のまま次の局へ）になります。</p>
+      <button class="big-btn" id="btn-kyuushu-yes">流局にする</button>
+      <button class="big-btn" id="btn-kyuushu-no" style="background:#ccc;box-shadow:0 3px 0 #999;color:#333">続ける</button></div>`);
+    $('#btn-kyuushu-yes').addEventListener('click', () => { closeModal(); game.humanDeclareKyuushu(); });
+    $('#btn-kyuushu-no').addEventListener('click', () => { closeModal(); game.humanSkipKyuushu(); });
   }
 
   // ---------------- 結果モーダル（連続表示） ----------------
@@ -136,12 +166,21 @@
           ${(r.uraHan > 0) ? `<div class="yaku-line"><span>裏ドラ</span><span>${r.uraHan}</span></div>` : ''}
           <div class="score-big">${r.han}翻${r.fu}符 ${w.gained}点</div>`;
       }).join('<hr style="margin:12px 0;border:none;border-top:1px dashed #cbb;">');
+    } else if (evt.reason === 'abortive') {
+      const rows = game.players.map(p =>
+        `<tr><td>${p.name}${p.isDealer ? '(親)' : ''}</td><td>${p.score}点</td></tr>`).join('');
+      body = `<h3 class="serif">途中流局</h3>
+        <p style="font-size:14px;margin-bottom:6px"><b>${evt.abortReason}</b></p>
+        <p style="font-size:12px;color:#666">この局は無効になり、親は連荘です。</p>
+        <table>${rows}</table>`;
     } else {
+      const nagashi = evt.nagashiSeats || [];
       const rows = game.players.map(p => {
         const tp = evt.tenpaiSeats.includes(p.seat);
-        return `<tr><td>${p.name}${p.isDealer ? '(親)' : ''}</td><td>${tp ? 'テンパイ' : 'ノーテン'}</td><td>${p.score}点</td></tr>`;
+        const state = nagashi.includes(p.seat) ? '<b style="color:#c43a2f">流し満貫</b>' : (tp ? 'テンパイ' : 'ノーテン');
+        return `<tr><td>${p.name}${p.isDealer ? '(親)' : ''}</td><td>${state}</td><td>${p.score}点</td></tr>`;
       }).join('');
-      body = `<h3 class="serif">流局</h3><table>${rows}</table>`;
+      body = `<h3 class="serif">流局</h3>${nagashi.length ? '<p style="font-size:13px;color:#c43a2f">流し満貫が成立しました！</p>' : ''}<table>${rows}</table>`;
     }
     openModal(`<div class="modal-box">${body}
       <button class="big-btn" id="btn-next-hand">${game.gameOver ? '結果を見る' : '次の局へ'}</button>
@@ -166,9 +205,16 @@
   }
 
   function showGameEndModal(evt) {
-    const ranked = evt.players.slice().sort((a, b) => b.score - a.score);
-    const rows = ranked.map((p, i) => `<tr><td>${i + 1}位</td><td>${p.name}</td><td>${p.score}点</td></tr>`).join('');
-    openModal(`<div class="modal-box"><h3 class="serif">対局終了</h3><table>${rows}</table>
+    const st = evt.standings || evt.players.slice().sort((a, b) => b.score - a.score)
+      .map((p, i) => ({ rank: i + 1, name: p.name, score: p.score, result: null }));
+    const rows = st.map(p => {
+      const res = p.result === null ? '' :
+        `<td class="score-delta ${p.result >= 0 ? 'plus' : 'minus'}">${p.result > 0 ? '+' : ''}${p.result.toFixed(1)}</td>`;
+      return `<tr><td>${p.rank}位</td><td>${p.name}</td><td>${p.score}点</td>${res}</tr>`;
+    }).join('');
+    openModal(`<div class="modal-box"><h3 class="serif">対局終了</h3>
+      <table>${rows}</table>
+      <p style="font-size:11.5px;color:#777;margin-top:8px">25000点持ち30000点返し／ウマ +15/+5/-5/-15</p>
       <button class="big-btn" id="btn-finish">スタート画面へ</button></div>`);
     $('#btn-finish').addEventListener('click', () => { closeModal(); showScreen('start'); });
   }
@@ -190,6 +236,62 @@
       <button class="big-btn" id="btn-ron-no" style="background:#ccc;box-shadow:0 3px 0 #999;color:#333">見送る</button></div>`);
     $('#btn-ron-yes').addEventListener('click', () => { closeModal(); game.humanChooseRon(); });
     $('#btn-ron-no').addEventListener('click', () => { closeModal(); game.humanSkipRon(); });
+  }
+
+  // ---------------- アシスト表示 ----------------
+  function computeAssist() {
+    if (!game || !assistOn) { lastAnalysis = null; return; }
+    try { lastAnalysis = A.analyze(game, 0); }
+    catch (e) { lastAnalysis = null; }
+  }
+
+  function miniTiles(list, max) {
+    return list.slice(0, max || 8).map(w =>
+      `<span class="assist-tile">${T.tileHTML(w.type, { small: true })}<small>${w.left}</small></span>`
+    ).join('');
+  }
+
+  function renderAssist() {
+    const box = $('#assist-panel');
+    if (!game || !assistOn || !lastAnalysis) { box.innerHTML = ''; return; }
+    const a = lastAnalysis;
+    const rows = [];
+
+    // 手の進み具合 + 待ち
+    if (a.waits && a.waits.length > 0) {
+      rows.push(`<div class="assist-row">
+        <span class="assist-tag hot">テンパイ</span>
+        <span class="assist-note">待ち</span>${miniTiles(a.waits)}
+        ${a.furiten ? '<span class="assist-tag warn">フリテン(ロンできません)</span>' : ''}
+      </div>`);
+    } else if (a.shanten !== null && a.shanten >= 0) {
+      rows.push(`<div class="assist-row">
+        <span class="assist-tag">${A.shantenLabel(a.shanten)}</span>
+        <span class="assist-note">あと${a.shanten}枚そろえばテンパイです</span>
+      </div>`);
+    }
+
+    // おすすめの打牌
+    if (a.candidates && a.candidates.length > 0) {
+      const best = a.candidates[0];
+      rows.push(`<div class="assist-row assist-rec">
+        <span class="assist-tag hot">おすすめ</span>
+        <span class="assist-tile">${T.tileHTML(best.type, { small: true })}</span>
+        <span class="best">${best.label}切り</span>
+        <span class="assist-note">→ ${A.shantenLabel(best.shanten)} / 受け入れ${best.ukeire}枚</span>
+      </div>`);
+    }
+
+    // 狙える役
+    if (a.yaku && a.yaku.length > 0) {
+      const items = a.yaku.slice(0, 3).map(y =>
+        `<div class="${y.ok ? 'done' : ''}"><b>${y.name}(${y.han})</b> … ${y.note}</div>`
+      ).join('');
+      rows.push(`<div class="assist-row"><span class="assist-tag">狙える役</span></div>
+        <div class="assist-yaku">${items}</div>`);
+    }
+
+    box.innerHTML = `<div class="assist-box">${rows.join('')}</div>`;
   }
 
   // ---------------- アクションバー ----------------
@@ -259,6 +361,10 @@
     if (!t || !currentAwait || currentAwait.type !== 'awaitDiscard') return;
     const tileId = +t.dataset.id;
     const p = game.player(0);
+    if (game.forbiddenDiscards(0).includes(MJ.idToType(tileId))) {
+      appendLog('鳴いた直後にその牌は切れません(食い替え禁止)。');
+      return;
+    }
     if (riichiArmed) {
       const rest = p.hand.filter(id => id !== tileId);
       if (!MJ.isTenpai(rest, p.melds)) {
@@ -269,7 +375,9 @@
     const armed = riichiArmed;
     riichiArmed = false;
     currentAwait = null;
+    lastAnalysis = null;
     setActionBar([]);
+    $('#assist-panel').innerHTML = '';
     game.humanDiscard(tileId, armed);
   });
 
@@ -307,10 +415,26 @@
     const me = game.player(0);
     const sorted = me.hand.slice().sort((a, b) => MJ.idToType(a) - MJ.idToType(b));
     const wrap = $('#my-hand');
+    // アシストON時は「おすすめ」「危険牌」「食い替えで切れない牌」を色分けする
+    const banned = game.forbiddenDiscards ? game.forbiddenDiscards(0) : [];
+    const isMyDiscardTurn = currentAwait && currentAwait.type === 'awaitDiscard';
+    const recoId = (assistOn && isMyDiscardTurn && lastAnalysis && lastAnalysis.candidates.length)
+      ? lastAnalysis.candidates[0].tileId : null;
+    const dangerByType = {};
+    if (assistOn && isMyDiscardTurn && lastAnalysis) {
+      lastAnalysis.candidates.forEach(c => { dangerByType[c.type] = c.danger; });
+    }
     wrap.innerHTML = sorted.map(id => {
       const type = MJ.idToType(id);
       const isDrawn = game.lastDraw && game.lastDraw.seat === 0 && game.lastDraw.tileId === id;
-      return `<div class="tile hand-tile${isDrawn ? ' drawn' : ''}" data-id="${id}"><svg viewBox="0 0 100 140">${T.tileSVGInner(type, MJ.isRedFive(id))}</svg></div>`;
+      const cls = ['tile', 'hand-tile'];
+      if (isDrawn) cls.push('drawn');
+      if (banned.includes(type)) cls.push('banned');
+      else if (id === recoId) cls.push('reco');
+      const dg = dangerByType[type];
+      if (dg === 3) cls.push('danger3');
+      else if (dg === 2) cls.push('danger2');
+      return `<div class="${cls.join(' ')}" data-id="${id}"><svg viewBox="0 0 100 140">${T.tileSVGInner(type, MJ.isRedFive(id))}</svg></div>`;
     }).join('');
     $('#my-melds').innerHTML = me.melds.map(m => meldGroupHTML(m)).join('');
   }
