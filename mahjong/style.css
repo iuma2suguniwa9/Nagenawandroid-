@@ -80,32 +80,36 @@ a{color:var(--gold-soft)}
   background:rgba(0,0,0,.35);border:1px solid var(--gold);border-radius:6px;padding:0 7px;line-height:1.5}
 .mywind .dealer-mark{color:#ffb144;font-weight:800}
 
-.table{position:relative;flex:1 1 auto;min-height:0;margin:2px auto;width:100%;max-width:520px;
+/* min-height は「上家の牌と左右の列と自分の名前が重ならない最小の高さ」。
+   アシストの内容が増えても卓がこれ以上潰れないようにする。 */
+.table{position:relative;flex:1 1 auto;min-height:292px;margin:2px auto;width:100%;max-width:520px;
   background:radial-gradient(circle at 50% 45%, var(--felt) 0%, var(--felt-dark) 100%);
   border-radius:16px;border:5px solid #0a2b21;box-shadow:inset 0 0 30px rgba(0,0,0,.5);}
 
 /* 卓のレイアウト。牌のサイズは --op（相手の伏せ牌）を基準に決めるので、
    狭い画面ではこの1変数を縮めれば全体がそのまま収まる。 */
 .seat{position:absolute;display:flex;flex-direction:column;align-items:center;gap:2px;z-index:2}
-.seat .nameline{font-size:10.5px;color:#e6efe9;background:rgba(0,0,0,.45);padding:1px 7px;border-radius:8px;
-  display:flex;gap:5px;align-items:center;white-space:nowrap}
-.seat .nameline .score{color:var(--gold-soft);font-weight:700}
-.seat .nameline .dealer{color:#ffb144;font-weight:800}
+.nameline{font-size:10.5px;color:#e6efe9;background:rgba(0,0,0,.45);padding:1px 6px;border-radius:8px;
+  display:flex;gap:4px;align-items:center;white-space:nowrap}
+.nameline .score{color:var(--gold-soft);font-weight:700}
+.nameline .dealer{color:#ffb144;font-weight:800}
 /* 自風。誰が東で誰が南かをひと目で分かるようにする */
-.seat .nameline .wind{font-weight:800;color:#0c382c;background:var(--gold-soft);
+.nameline .wind{font-weight:800;color:#0c382c;background:var(--gold-soft);
   border-radius:4px;padding:0 4px;font-size:11px;line-height:1.45}
-.seat .nameline .wind.me{background:var(--gold);box-shadow:0 0 6px rgba(255,211,77,.8)}
-.seat .nameline.riichi{outline:1px solid var(--gold)}
-.seat-top{top:4px;left:50%;transform:translateX(-50%)}
-.seat-bottom{bottom:4px;left:50%;transform:translateX(-50%);flex-direction:column-reverse}
+.nameline .wind.me{background:var(--gold);box-shadow:0 0 6px rgba(255,211,77,.8)}
+.nameline.riichi{outline:1px solid var(--gold)}
+/* 名前・点数は卓の四隅/上下中央に固定する。席の高さに影響させないための分離。 */
+.nametag{position:absolute;z-index:4}
+.nametag-top{top:3px;left:50%;transform:translateX(-50%)}
+.nametag-bottom{bottom:3px;left:50%;transform:translateX(-50%)}
+.nametag-left{top:3px;left:3px}
+.nametag-right{top:3px;right:3px}
+
+.seat-top{top:24px;left:50%;transform:translateX(-50%)}
+.seat-bottom{bottom:24px;left:50%;transform:translateX(-50%)}
 .seat-right{right:2px;top:50%;transform:translateY(-50%)}
 .seat-left{left:2px;top:50%;transform:translateY(-50%)}
-/* 左右の席は名前欄を牌の列の上に浮かせる。
-   列と同じ行に置くと箱が名前の幅まで広がって河に被るため。 */
 .seat-left,.seat-right{position:absolute}
-.seat-left .nameline,.seat-right .nameline{position:absolute;bottom:100%;margin-bottom:5px}
-.seat-left .nameline{left:0}
-.seat-right .nameline{right:0}
 /* 手牌と副露のまとまり。上下の席は横並び、左右の席は縦並び。 */
 .seat-tiles{display:flex;gap:5px;align-items:center}
 .seat-left .seat-tiles,.seat-right .seat-tiles{flex-direction:column}
@@ -159,7 +163,7 @@ a{color:var(--gold-soft)}
 
 /* 内容が増えても画面を押し出さず、中でスクロールさせる */
 #assist-panel{flex:0 1 auto;min-height:0;margin:3px 10px 0;overflow-y:auto;
-  max-height:min(148px, 22vh);-webkit-overflow-scrolling:touch}
+  max-height:min(206px, 31vh);-webkit-overflow-scrolling:touch}
 #assist-panel:empty{display:none}
 .assist-box{background:rgba(0,0,0,.28);border:1px solid var(--felt-line);border-radius:9px;
   padding:6px 9px;font-size:12px}
@@ -174,10 +178,32 @@ a{color:var(--gold-soft)}
 .assist-note{color:#cfe4da;line-height:1.5}
 .assist-rec{display:flex;align-items:center;gap:6px}
 .assist-rec .best{color:var(--gold-soft);font-weight:700}
-.assist-yaku{display:flex;flex-direction:column;gap:3px;margin-top:2px}
-.assist-yaku div{color:#cfe4da;line-height:1.45}
-.assist-yaku b{color:var(--gold-soft)}
-.assist-yaku .done b{color:#8fe6ae}
+.assist-yaku{display:flex;flex-direction:column;gap:4px;margin-top:3px}
+.assist-yaku .yrow{border-left:2px solid var(--felt-line);padding-left:6px}
+.assist-yaku .yhead{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.assist-yaku b{color:var(--gold-soft);font-size:12.5px}
+.assist-yaku .yhan{color:#9fc2b2;font-size:11px}
+.assist-yaku .ynote{color:#b9d2c6;line-height:1.4;font-size:11px;margin-top:1px}
+
+/* 役の状態を示す小さなラベル */
+.ytag{font-size:9.5px;font-weight:700;padding:1px 5px;border-radius:8px;white-space:nowrap}
+.ytag.done{background:#2f7a4d;color:#d6ffe6}
+.ytag.cond{background:#2a5f7a;color:#d3ecff}
+.ytag.far{background:var(--felt-line);color:#cfe4da}
+.ytag.menzen{background:#7a5a1f;color:#ffe9bd}
+.ytag.lost{background:#8c2f27;color:#ffd9d4}
+.ytag.down{background:#7a5a1f;color:#ffe9bd}
+.ytag.keep{background:var(--felt-line);color:#d9ece2}
+.ytag.gain{background:#2f7a4d;color:#d6ffe6}
+.ytag.sh{background:var(--gold);color:#4a3208}
+
+/* 鳴きの損得 */
+.callopt{border:1px solid var(--felt-line);border-radius:7px;padding:5px 7px;margin-top:5px}
+.callopt .chead{font-weight:800;color:var(--gold-soft);font-size:12.5px;margin-bottom:3px}
+.callopt .crow{display:flex;gap:6px;align-items:flex-start;font-size:11px;
+  color:#cfe4da;line-height:1.5;margin-top:2px}
+.callopt .crow .good{color:#8fe6ae}
+.callopt .warnbox{background:#5c1f19;color:#ffd9d4;border-radius:5px;padding:3px 6px;font-weight:700}
 .assist-loading{color:#9fc2b2;font-style:italic}
 .d0{color:#8fe6ae}.d1{color:#cfe4da}.d2{color:#f3d488}.d3{color:#ff9d92}
 /* 危険度に応じた手牌の下線 */
@@ -327,7 +353,7 @@ a{color:var(--gold-soft)}
 @keyframes fx-drawn-k{0%{transform:translateY(-13px);filter:brightness(1.7)}100%{transform:none;filter:none}}
 
 /* リーチ中の席 */
-.seat .nameline.riichi{outline:2px solid var(--gold);animation:fx-riichi-glow 1.5s ease-in-out infinite alternate}
+.nameline.riichi{outline:2px solid var(--gold);animation:fx-riichi-glow 1.5s ease-in-out infinite alternate}
 @keyframes fx-riichi-glow{
   from{box-shadow:0 0 3px rgba(255,211,77,.5)}
   to{box-shadow:0 0 13px 3px rgba(255,211,77,.85)}
@@ -335,7 +361,7 @@ a{color:var(--gold-soft)}
 
 @media (prefers-reduced-motion: reduce){
   .fx-stamp,.fx-flash,.fx-rays,.tile.fx-flip,.hand-tile.drawn,
-  .seat .nameline.riichi,.tile.calltarget{animation:none}
+  .nameline.riichi,.tile.calltarget{animation:none}
 }
 
 /* 狭い画面ほど牌を縮めて、卓が横にはみ出さないようにする */
@@ -344,5 +370,5 @@ a{color:var(--gold-soft)}
 }
 @media (max-width:360px){
   :root{--op:12px;--riv:13.5px}
-  .seat .nameline{font-size:9.5px;padding:1px 5px}
+  .nameline{font-size:9.5px;padding:1px 5px}
 }

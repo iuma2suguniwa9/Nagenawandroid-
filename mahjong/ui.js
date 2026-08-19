@@ -22,6 +22,9 @@
   let pendingCall = null;  // 鳴きの対象牌 {discarderSeat, tileId} — 河で光らせる
 
   const $ = sel => document.querySelector(sel);
+  // 卓の上では席の位置で誰か分かるので、括弧内の呼び名だけを出して幅を詰める
+  // ("CPU2(対面)" → "対面")。ログや結果画面では元の名前をそのまま使う。
+  const shortName = n => { const m = /\(([^)]+)\)/.exec(n); return m ? m[1] : n; };
   const el = (cls, html) => { const e = document.createElement('div'); e.className = cls || ''; if (html !== undefined) e.innerHTML = html; return e; };
 
   // ---------------- 画面切り替え ----------------
@@ -157,10 +160,10 @@
         currentAwait = evt; renderAll(); setActionBarForKan(evt); return;
       case 'awaitPonKanChoice':
         currentAwait = evt; pendingCall = { discarderSeat: evt.discarderSeat, tileId: evt.tileId };
-        renderAll(); setActionBarForPonKan(evt); return;
+        renderAll(); setActionBarForPonKan(evt); scheduleCallAssist(evt); return;
       case 'awaitChiChoice':
         currentAwait = evt; pendingCall = { discarderSeat: evt.discarderSeat, tileId: evt.tileId };
-        renderAll(); setActionBarForChi(evt); return;
+        renderAll(); setActionBarForChi(evt); scheduleCallAssist(evt); return;
       case 'awaitKyuushuChoice':
         currentAwait = evt; renderAll(); showKyuushuModal(evt); return;
     }
@@ -386,6 +389,20 @@
     catch (e) { lastAnalysis = null; }
   }
 
+  // 鳴きの損得も打牌候補と同じく、ボタンを押せる状態にしてから計算する
+  function scheduleCallAssist(evt) {
+    lastAnalysis = null;
+    if (assistTimer) { clearTimeout(assistTimer); assistTimer = null; }
+    if (!game || !assistOn) { $('#assist-panel').innerHTML = ''; return; }
+    $('#assist-panel').innerHTML = '<div class="assist-box assist-loading">鳴いた場合を計算中…</div>';
+    const forEvt = evt;
+    assistTimer = setTimeout(() => {
+      assistTimer = null;
+      if (currentAwait !== forEvt) { $('#assist-panel').innerHTML = ''; return; }
+      renderCallAssist(forEvt);
+    }, 0);
+  }
+
   function miniTiles(list, max) {
     return list.slice(0, max || 8).map(w =>
       `<span class="assist-tile">${T.tileHTML(w.type, { small: true })}<small>${w.left}</small></span>`
@@ -423,16 +440,71 @@
       </div>`);
     }
 
-    // 狙える役
+    // 狙える役。上から順に「今いちばん現実的で、点が高いもの」
     if (a.yaku && a.yaku.length > 0) {
-      const items = a.yaku.slice(0, 3).map(y =>
-        `<div class="${y.ok ? 'done' : ''}"><b>${y.name}(${y.han})</b> … ${y.note}</div>`
-      ).join('');
-      rows.push(`<div class="assist-row"><span class="assist-tag">狙える役</span></div>
+      const items = a.yaku.slice(0, 6).map((y, i) => {
+        // 条件を満たしているだけの役(染め手など)と、形ができている役を区別する
+        const mark = y.need === 0
+          ? (y.trait ? '<span class="ytag cond">条件クリア</span>' : '<span class="ytag done">形あり</span>')
+          : `<span class="ytag far">あと${y.need}枚</span>`;
+        const menzen = y.menzenOnly ? '<span class="ytag menzen">鳴くと消える</span>' : '';
+        // 説明文は上位2つだけ。下位まで書くとパネルが埋まって一覧性が落ちる
+        const note = i < 2 ? `<div class="ynote">${y.note}</div>` : '';
+        return `<div class="yrow"><div class="yhead"><b>${y.name}</b>
+          <span class="yhan">${y.han}</span>${mark}${menzen}</div>${note}</div>`;
+      }).join('');
+      rows.push(`<div class="assist-row"><span class="assist-tag">狙える役</span>
+        <span class="assist-note">上ほど狙いやすくて高い</span></div>
         <div class="assist-yaku">${items}</div>`);
     }
 
     box.innerHTML = `<div class="assist-box">${rows.join('')}</div>`;
+  }
+
+  // ---------------- 鳴きの損得 ----------------
+  // 鳴くと何が消えて何が残るかを、鳴く前と同じ物差しで比べて見せる。
+  function callOptionsOf(evt) {
+    const t = MJ.idToType(evt.tileId);
+    if (evt.type === 'awaitChiChoice') {
+      return evt.options.map(o => ({
+        label: 'チー ' + o.slice().sort((x, y) => x - y).map(MJ.typeLabel).join(''),
+        kind: 'chi', used: o
+      }));
+    }
+    const opts = [];
+    if (evt.canPon) opts.push({ label: 'ポン', kind: 'pon', used: [t, t] });
+    if (evt.canKan) opts.push({ label: 'カン', kind: 'minkan', used: [t, t, t] });
+    return opts;
+  }
+
+  function renderCallAssist(evt) {
+    const box = $('#assist-panel');
+    if (!game || !assistOn) { box.innerHTML = ''; return; }
+    const blocks = callOptionsOf(evt).map(o => {
+      let im = null;
+      try { im = A.callImpact(game, 0, o.kind, evt.tileId, o.used); } catch (e) { im = null; }
+      if (!im) return '';
+      const parts = [];
+      const chip = (cls, label, names) => names.length
+        ? `<div class="crow"><span class="ytag ${cls}">${label}</span><span>${names.join('・')}</span></div>` : '';
+      parts.push(chip('lost', '消える', im.lost.map(e => e.name)));
+      parts.push(chip('down', '翻が下がる', im.downgraded.map(d => `${d.name} ${d.from}→${d.to}翻`)));
+      parts.push(chip('down', '遠のく', im.worsened.map(d => d.name)));
+      parts.push(chip('keep', '残る', im.kept.map(e => e.name)));
+      parts.push(chip('gain', '近づく', im.improved.map(e => e.name)));
+      const sh = im.shantenAfter < im.shantenBefore
+        ? `<b class="good">${A.shantenLabel(im.shantenBefore)} → ${A.shantenLabel(im.shantenAfter)}</b>`
+        : `<span>${A.shantenLabel(im.shantenBefore)} → ${A.shantenLabel(im.shantenAfter)}（進みません）</span>`;
+      const warn = im.noYakuRisk
+        ? '<div class="crow warnbox">⚠ 鳴くと役が無くなり、テンパイしても和了できません</div>' : '';
+      return `<div class="callopt"><div class="chead">${o.label}</div>
+        <div class="crow"><span class="ytag sh">向聴</span>${sh}</div>
+        ${warn}${parts.join('')}</div>`;
+    }).join('');
+    box.innerHTML = `<div class="assist-box">
+      <div class="assist-row"><span class="assist-tag hot">鳴きの損得</span>
+        <span class="assist-note">鳴くと門前の役が消えます</span></div>
+      ${blocks}</div>`;
   }
 
   // ---------------- アクションバー ----------------
@@ -578,11 +650,11 @@
     $('#my-dealer').textContent = me0.isDealer ? '(親)' : '';
 
     pub.forEach(p => {
-      const nameDiv = seatEl(p.seat).querySelector('.nameline');
-      nameDiv.className = 'nameline' + (p.riichi ? ' riichi' : '');
+      const nameDiv = document.getElementById('nametag-' + p.seat);
+      nameDiv.className = nameDiv.className.replace(/ riichi\b/, '') + (p.riichi ? ' riichi' : '');
       nameDiv.innerHTML =
         `<span class="wind${p.seat === 0 ? ' me' : ''}">${WIND_NAME[p.seatWind]}</span>` +
-        `${p.isDealer ? '<span class="dealer">親</span>' : ''}${p.name} <span class="score">${p.score}</span>`;
+        `${p.isDealer ? '<span class="dealer">親</span>' : ''}${shortName(p.name)} <span class="score">${p.score}</span>`;
       const handDiv = seatEl(p.seat).querySelector('.seat-hand');
       if (p.seat !== 0) {
         handDiv.innerHTML = Array.from({ length: p.handCount }).map(() => T.tileBackHTML({ small: true })).join('');
@@ -646,9 +718,15 @@
       const s = el('seat ' + layout[seat]);
       s.id = 'seat-' + seat;
       // 手牌と副露は同じ列に並べる。縦に積むと鳴くたびに背が伸びて河に被るため。
-      s.innerHTML = `<div class="nameline"></div>
-        <div class="seat-tiles"><div class="seat-hand"></div><div class="meld-row"></div></div>`;
+      s.innerHTML = `<div class="seat-tiles"><div class="seat-hand"></div><div class="meld-row"></div></div>`;
       table.appendChild(s);
+    });
+    // 名前と点数は卓の縁に固定する。席の中に置くと席の背が伸びて、
+    // 卓が縦に狭いときに上家の牌や河とぶつかる。
+    [0, 1, 2, 3].forEach(seat => {
+      const n = el('nameline nametag nametag-' + layout[seat].replace('seat-', ''));
+      n.id = 'nametag-' + seat;
+      table.appendChild(n);
     });
     const riverLayout = { 0: 'river river-bottom', 1: 'river river-right', 2: 'river river-top', 3: 'river river-left' };
     [0, 1, 2, 3].forEach(seat => {

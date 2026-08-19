@@ -109,113 +109,453 @@
   }
   const DANGER_LABEL = ['安全', 'やや安全', '注意', '危険'];
 
-  // ---------- 狙える役の見込み ----------
-  // 今の手牌から現実的に狙える役を、達成度つきで返す。
-  function yakuCandidates(game, seat) {
+  // ============================================================
+  //  狙える役の見込み
+  //  手牌を ctx にまとめ、役ごとに「あと何枚入れ替えれば形になるか」(need)
+  //  を見積もる。ctx は仮定の手牌(鳴いた後など)でも作れるので、
+  //  鳴きの損得もこの同じ物差しで比べられる。
+  // ============================================================
+  const SUIT_NAME = ['萬子', '筒子', '索子'];
+
+  function handContext(game, seat, override) {
     const p = game.player(seat);
-    const allIds = p.hand.concat(p.melds.reduce((a, m) => a.concat(m.tiles), []));
-    const types = allIds.map(MJ.idToType);
-    const counts = MJ.countsFromIds(allIds);
-    const isMenzen = p.melds.every(m => m.kind === 'ankan');
-    const total = types.length;
+    const hand = override ? override.hand : p.hand;
+    const melds = override ? override.melds : p.melds;
+    const meldIds = melds.reduce((a, m) => a.concat(m.tiles), []);
+    const allIds = hand.concat(meldIds);
+    return {
+      game, seat, hand, melds, allIds,
+      types: allIds.map(MJ.idToType),
+      counts: MJ.countsFromIds(allIds),
+      concealed: MJ.countsFromIds(hand),
+      // 暗槓は門前を崩さない
+      isMenzen: melds.every(m => m.kind === 'ankan'),
+      kanCount: melds.filter(m => m.kind.indexOf('kan') >= 0).length,
+      seatWind: p.seatWind,
+      roundWind: game.round.roundWind,
+    };
+  }
+
+  // 数え上げの補助
+  function countIf(counts, pred) { let n = 0; for (let t = 0; t < 34; t++) if (pred(t)) n += counts[t]; return n; }
+  function typesWith(counts, min) { let n = 0; for (let t = 0; t < 34; t++) if (counts[t] >= min) n++; return n; }
+  function typesExactly(counts, n0) { let n = 0; for (let t = 0; t < 34; t++) if (counts[t] === n0) n++; return n; }
+
+  // 刻子を n 組そろえるのにあと何枚必要か。
+  // 対子は1枚で刻子になるが、単騎からは2枚いる。アタマの要否も加える。
+  function koutsuNeed(counts, n, needHead) {
+    const sets = typesWith(counts, 3);
+    const pairs = typesExactly(counts, 2);
+    const want = Math.max(0, n - sets);
+    const usePairs = Math.min(pairs, want);
+    const fromSingles = want - usePairs;
+    let need = usePairs + fromSingles * 2;
+    // アタマに回せる対子が残っていなければ1枚足りない
+    if (needHead && pairs - usePairs <= 0) need += 1;
+    return { need, sets, pairs };
+  }
+
+  // 役満は13翻相当として価値を測る
+  function hanValue(h) { return h >= 13 ? 13 : h; }
+
+  // need(入れ替えが必要な枚数)が小さく、翻が高い役ほど上に来るようにする。
+  // trait(タンヤオ・染め手など「条件を満たしているか」型)の need=0 は
+  // 「あとは形を作るだけ」であって和了が近いわけではないので、加点は控えめにする。
+  function priority(e) {
+    const base = (hanValue(e.hanMenzen) + 1) * 100 / (1 + e.need * 1.15);
+    const s = base + (e.need === 0 ? (e.trait ? 60 : 260) : 0);
+    // 門前ツモのように「条件次第で自動的に付く」役は一覧を占領しないよう控えめに
+    return e.minor ? s * 0.45 : s;
+  }
+
+  function hanText(e, isMenzen) {
+    if (e.hanMenzen >= 13) return '役満';
+    const h = isMenzen ? e.hanMenzen : e.hanOpen;
+    if (h === null || h === undefined) return e.hanMenzen + '翻(門前のみ)';
+    return h + '翻' + (isMenzen && e.hanOpen !== null && e.hanOpen < e.hanMenzen ? `(鳴くと${e.hanOpen}翻)` : '');
+  }
+
+  // 個々の役の見込みを算出する。need が大きすぎるものは候補から外す。
+  function yakuList(ctx) {
+    const { counts, concealed, types, isMenzen } = ctx;
     const out = [];
+    const total = types.length;
+    const add = e => {
+      if (e.need === null || e.need === undefined) return;
+      if (e.menzenOnly && !isMenzen) return;      // もう鳴いているので不可能
+      if (e.need > (e.maxNeed === undefined ? 6 : e.maxNeed)) return;
+      e.ok = e.need === 0;
+      e.hanOpen = e.menzenOnly ? null : (e.hanOpen === undefined ? e.hanMenzen : e.hanOpen);
+      e.han = hanText(e, isMenzen);
+      e.score = priority(e);
+      out.push(e);
+    };
 
-    // --- タンヤオ ---
-    const badForTanyao = types.filter(MJ.isTerminalOrHonor).length;
-    out.push({
-      name: 'タンヤオ', han: '1翻', open: true,
-      ok: badForTanyao === 0,
-      note: badForTanyao === 0 ? '成立中！1・9・字牌を引いても使わないように'
-        : `1・9・字牌があと${badForTanyao}枚。これを全部入れ替えれば狙えます`,
-      score: 100 - badForTanyao * 18
+    // ---- タンヤオ ----
+    const badTanyao = countIf(counts, MJ.isTerminalOrHonor);
+    add({
+      key: 'tanyao', trait: true, name: 'タンヤオ', hanMenzen: 1, need: badTanyao, maxNeed: 6,
+      note: badTanyao === 0 ? '2〜8の牌だけ。1・9・字牌を使わなければ確定です'
+        : `1・9・字牌が${badTanyao}枚。これを入れ替えれば成立(鳴いてもOK)`
     });
 
-    // --- 役牌 ---
-    const yakuhaiTypes = [31, 32, 33, 27 + p.seatWind, game.round.roundWind];
-    const yakuhaiReady = [];
-    [...new Set(yakuhaiTypes)].forEach(t => {
-      if (counts[t] >= 3) yakuhaiReady.push({ t, n: counts[t], done: true });
-      else if (counts[t] === 2) yakuhaiReady.push({ t, n: 2, done: false });
+    // ---- 役牌 ----
+    const yakuhai = [...new Set([31, 32, 33, 27 + ctx.seatWind, ctx.roundWind])];
+    let bestYakuhai = null;
+    yakuhai.forEach(t => {
+      const c = counts[t];
+      if (c === 0) return;
+      const left = remaining(ctx.game, ctx.seat, t);
+      const need = c >= 3 ? 0 : (3 - c);
+      // 場に残っていない牌は諦める
+      if (need > left) return;
+      if (!bestYakuhai || need < bestYakuhai.need) bestYakuhai = { t, c, need, left };
     });
-    if (yakuhaiReady.length > 0) {
-      const done = yakuhaiReady.filter(y => y.done);
-      out.push({
-        name: '役牌', han: '1翻', open: true,
-        ok: done.length > 0,
-        note: done.length > 0
-          ? `${done.map(y => MJ.typeLabel(y.t)).join('・')}が揃っていて役が確定しています`
-          : `${yakuhaiReady.map(y => MJ.typeLabel(y.t)).join('・')}があと1枚でポンできます(残り${yakuhaiReady.map(y => remaining(game, seat, y.t)).join('/')}枚)`,
-        score: done.length > 0 ? 120 : 95
+    if (bestYakuhai) {
+      const { t, c, need, left } = bestYakuhai;
+      add({
+        key: 'yakuhai', name: `役牌(${MJ.typeLabel(t)})`, hanMenzen: 1, need, maxNeed: 2,
+        note: need === 0 ? `${MJ.typeLabel(t)}が3枚。役が確定しています`
+          : c === 2 ? `${MJ.typeLabel(t)}があと1枚でポンできます(残り${left}枚)`
+            : `${MJ.typeLabel(t)}をあと2枚(残り${left}枚)`
       });
     }
 
-    // --- 混一色 / 清一色 ---
-    const suitCount = [0, 0, 0], honorCount = types.filter(MJ.isHonor).length;
+    // ---- 染め手 ----
+    const suitCount = [0, 0, 0];
+    const honorCount = countIf(counts, MJ.isHonor);
     types.filter(t => !MJ.isHonor(t)).forEach(t => suitCount[MJ.typeSuit(t)]++);
     const bestSuit = suitCount.indexOf(Math.max(...suitCount));
     const offSuit = total - suitCount[bestSuit] - honorCount;
-    const suitName = ['萬子', '筒子', '索子'][bestSuit];
-    if (offSuit <= 4) {
-      out.push({
-        name: honorCount > 0 ? '混一色' : '清一色',
-        han: honorCount > 0 ? (isMenzen ? '3翻' : '2翻') : (isMenzen ? '6翻' : '5翻'),
-        open: true,
-        ok: offSuit === 0,
-        note: offSuit === 0
-          ? `${suitName}${honorCount > 0 ? '＋字牌' : ''}だけで揃っています！`
-          : `${suitName}に寄せると狙えます。他の色があと${offSuit}枚`,
-        score: 90 - offSuit * 12
+    add({
+      key: 'honitsu', trait: true, name: '混一色', hanMenzen: 3, hanOpen: 2, need: offSuit, maxNeed: 5,
+      note: offSuit === 0 ? `${SUIT_NAME[bestSuit]}と字牌だけ。形になれば成立です`
+        : `${SUIT_NAME[bestSuit]}＋字牌に寄せる。他の色が${offSuit}枚`
+    });
+    add({
+      key: 'chinitsu', trait: true, name: '清一色', hanMenzen: 6, hanOpen: 5, need: offSuit + honorCount, maxNeed: 5,
+      note: (offSuit + honorCount) === 0 ? `${SUIT_NAME[bestSuit]}だけ！`
+        : `${SUIT_NAME[bestSuit]}だけに寄せる。他が${offSuit + honorCount}枚`
+    });
+
+    // ---- 対々和 / 三暗刻 / 混老頭 ----
+    const toitoi = koutsuNeed(counts, 4, true);
+    add({
+      key: 'toitoi', name: '対々和', hanMenzen: 2, need: toitoi.need, maxNeed: 5,
+      note: `刻子${toitoi.sets}組・対子${toitoi.pairs}組。全部を3枚組にすると成立(ポンで進められます)`
+    });
+    const ankan = ctx.melds.filter(m => m.kind === 'ankan').length;
+    const ankou = typesWith(concealed, 3) + ankan;
+    const san = koutsuNeed(concealed, 3 - ankan, false);
+    const suu = koutsuNeed(concealed, 4 - ankan, true);
+    if (ankou + typesExactly(concealed, 2) >= 2) {
+      add({
+        key: 'sanankou', name: '三暗刻', hanMenzen: 2, need: san.need, maxNeed: 4,
+        note: `暗刻が${ankou}組。あと${Math.max(0, 3 - ankou)}組（鳴いて作った刻子は数えられません）`
+      });
+      add({
+        key: 'suuankou', name: '四暗刻', hanMenzen: 13, need: suu.need, maxNeed: 4,
+        note: `暗刻が${ankou}組。4組そろえば役満（ポンした瞬間に消えます）`
+      });
+    }
+    const simples = countIf(counts, MJ.isSimple);
+    add({
+      key: 'honroutou', trait: true, name: '混老頭', hanMenzen: 2, need: simples, maxNeed: 5,
+      note: `1・9・字牌だけで刻子を揃える形。中張牌が${simples}枚`
+    });
+
+    // ---- 七対子 / 二盃口 ----
+    const pairs = typesExactly(counts, 2);
+    add({
+      key: 'chiitoi', name: '七対子', hanMenzen: 2, menzenOnly: true,
+      need: Math.max(0, 7 - pairs), maxNeed: 4,
+      note: `対子が${pairs}組。7組で成立（鳴くと不可）`
+    });
+
+    // ---- 一盃口 / 二盃口 ----
+    const peikou = countPeikou(counts);
+    if (peikou.best >= 4) {
+      add({
+        key: 'iipeiko', name: '一盃口', hanMenzen: 1, menzenOnly: true,
+        need: 6 - peikou.best, maxNeed: 3,
+        note: peikou.best === 6 ? '同じ順子が2組そろっています（鳴くと消えます）'
+          : `同じ順子を2組つくる形にあと${6 - peikou.best}枚（鳴くと消えます）`
+      });
+    }
+    if (peikou.count >= 1) {
+      add({
+        key: 'ryanpeiko', name: '二盃口', hanMenzen: 3, menzenOnly: true,
+        need: (2 - peikou.count) * 3, maxNeed: 4,
+        note: `一盃口が${peikou.count}組。2組で二盃口（鳴くと不可）`
       });
     }
 
-    // --- 対々和 ---
-    let pairsOrSets = 0;
-    for (let t = 0; t < 34; t++) if (counts[t] >= 2) pairsOrSets++;
-    if (pairsOrSets >= 3) {
-      out.push({
-        name: '対々和', han: '2翻', open: true,
-        ok: false,
-        note: `同じ牌の組が${pairsOrSets}組あります。全部を3枚ずつにすると成立(ポンOK)`,
-        score: 40 + pairsOrSets * 8
+    // ---- 三色同順 / 一気通貫 / 三色同刻 ----
+    const sanshoku = bestSanshoku(counts);
+    add({
+      key: 'sanshoku', name: '三色同順', hanMenzen: 2, hanOpen: 1, need: sanshoku.need, maxNeed: 5,
+      note: `${sanshoku.r}${sanshoku.r + 1}${sanshoku.r + 2}を三色でそろえる形にあと${sanshoku.need}枚`
+    });
+    const ittsu = bestIttsu(counts);
+    add({
+      key: 'ittsu', name: '一気通貫', hanMenzen: 2, hanOpen: 1, need: ittsu.need, maxNeed: 5,
+      note: `${SUIT_NAME[ittsu.suit]}の1〜9を1本そろえる形にあと${ittsu.need}枚`
+    });
+    const sanshokuKo = bestSanshokuKoutsu(counts);
+    add({
+      key: 'sanshokuko', name: '三色同刻', hanMenzen: 2, need: sanshokuKo.need, maxNeed: 4,
+      note: `${sanshokuKo.r}の刻子を三色そろえる形にあと${sanshokuKo.need}枚`
+    });
+
+    // ---- チャンタ / 純チャン ----
+    const middle = countIf(counts, t => !MJ.isHonor(t) && MJ.typeRank(t) >= 4 && MJ.typeRank(t) <= 6);
+    add({
+      key: 'chanta', trait: true, name: 'チャンタ', hanMenzen: 2, hanOpen: 1, need: middle, maxNeed: 5,
+      note: `全ての面子に1・9・字牌を含める形。4〜6の牌が${middle}枚`
+    });
+    add({
+      key: 'junchan', trait: true, name: '純全帯幺九', hanMenzen: 3, hanOpen: 2, need: middle + honorCount, maxNeed: 5,
+      note: `字牌を使わないチャンタ。入れ替えが${middle + honorCount}枚`
+    });
+
+    // ---- 三元牌 ----
+    const dragons = [31, 32, 33];
+    const dragonSets = dragons.filter(t => counts[t] >= 3).length;
+    const dragonPairs = dragons.filter(t => counts[t] === 2).length;
+    const dragonHeld = dragons.reduce((a, t) => a + Math.min(counts[t], 3), 0);
+    if (dragonHeld >= 2) {
+      add({
+        key: 'shousangen', name: '小三元', hanMenzen: 4, need: Math.max(0, 8 - dragonHeld), maxNeed: 4,
+        note: `三元牌を2組の刻子＋1組の対子に。役牌2つ分も付きます`
+      });
+      add({
+        key: 'daisangen', name: '大三元', hanMenzen: 13, need: Math.max(0, 9 - dragonHeld), maxNeed: 4,
+        note: `白發中を全部刻子にすると役満（あと${Math.max(0, 9 - dragonHeld)}枚・ポンOK）`
       });
     }
 
-    // --- 七対子 ---
-    let pairs = 0;
-    for (let t = 0; t < 34; t++) if (counts[t] === 2) pairs++;
-    if (pairs >= 4 && isMenzen) {
-      out.push({
-        name: '七対子', han: '2翻', open: false,
-        ok: pairs === 7,
-        note: `対子が${pairs}組。あと${7 - pairs}組で成立します(鳴くと不可)`,
-        score: 40 + pairs * 9
+    // ---- 四喜和 ----
+    const winds = [27, 28, 29, 30];
+    const windHeld = winds.reduce((a, t) => a + Math.min(counts[t], 3), 0);
+    if (windHeld >= 5) {
+      add({
+        key: 'suushi', name: '四喜和', hanMenzen: 13, need: Math.max(0, 11 - windHeld), maxNeed: 4,
+        note: `風牌を3組の刻子＋対子以上に。役満です`
       });
     }
 
-    // --- 平和・リーチ ---
+    // ---- 字一色 / 清老頭 / 緑一色 ----
+    add({
+      key: 'tsuuiisou', trait: true, name: '字一色', hanMenzen: 13, need: total - honorCount, maxNeed: 4,
+      note: `字牌だけで揃える役満。字牌以外が${total - honorCount}枚`
+    });
+    const terminals = countIf(counts, MJ.isTerminal);
+    add({
+      key: 'chinroutou', trait: true, name: '清老頭', hanMenzen: 13, need: total - terminals, maxNeed: 4,
+      note: `1と9だけの役満。他が${total - terminals}枚`
+    });
+    const greens = countIf(counts, MJ.isGreenTile);
+    add({
+      key: 'ryuuiisou', trait: true, name: '緑一色', hanMenzen: 13, need: total - greens, maxNeed: 4,
+      note: `索子の23468と發だけの役満。他が${total - greens}枚`
+    });
+
+    // ---- 国士無双 ----
+    const kokushiKinds = MJ.KOKUSHI_TYPES.filter(t => counts[t] > 0).length;
+    const kokushiPair = MJ.KOKUSHI_TYPES.some(t => counts[t] >= 2);
+    add({
+      key: 'kokushi', name: '国士無双', hanMenzen: 13, menzenOnly: true,
+      need: Math.max(0, 14 - kokushiKinds - (kokushiPair ? 1 : 0)), maxNeed: 5,
+      note: `13種類の1・9・字牌のうち${kokushiKinds}種類。${kokushiPair ? 'アタマもあります' : 'どれか1つを2枚に'}（鳴くと不可）`
+    });
+
+    // ---- 九蓮宝燈 ----
+    if (offSuit + honorCount <= 2) {
+      const need9 = churenNeed(counts, bestSuit);
+      add({
+        key: 'churen', name: '九蓮宝燈', hanMenzen: 13, menzenOnly: true,
+        need: need9 + offSuit + honorCount, maxNeed: 4,
+        note: `${SUIT_NAME[bestSuit]}の1112345678999の形。役満（鳴くと不可）`
+      });
+    }
+
+    // ---- 槓子系 ----
+    if (ctx.kanCount >= 2) {
+      add({ key: 'sankantsu', name: '三槓子', hanMenzen: 2, need: Math.max(0, 3 - ctx.kanCount) * 2, maxNeed: 3, note: `カンが${ctx.kanCount}回。3回で成立` });
+      add({ key: 'suukantsu', name: '四槓子', hanMenzen: 13, need: Math.max(0, 4 - ctx.kanCount) * 2, maxNeed: 3, note: `カンが${ctx.kanCount}回。4回で役満` });
+    }
+
+    // ---- 門前限定の基本役 ----
     if (isMenzen) {
-      const sh = MJ.shanten(p.hand.length % 3 === 2 ? p.hand.slice(0, p.hand.length - 1) : p.hand, p.melds);
-      out.push({
-        name: 'リーチ', han: '1翻', open: false,
-        ok: sh <= 0,
-        note: sh <= 0 ? 'テンパイ！リーチできます'
-          : `門前を維持すれば狙えます(あと${sh}向聴)`,
-        score: sh <= 0 ? 130 : 70 - sh * 8
+      const hand13 = ctx.hand.length % 3 === 2 ? ctx.hand.slice(0, ctx.hand.length - 1) : ctx.hand;
+      const sh = MJ.shanten(hand13, ctx.melds);
+      add({
+        key: 'riichi', name: 'リーチ', hanMenzen: 1, menzenOnly: true,
+        need: Math.max(0, sh) * 2, maxNeed: 8,
+        note: sh <= 0 ? 'テンパイ！リーチできます（一発・裏ドラも付きます）'
+          : `門前のままテンパイすれば宣言できます（あと${sh}向聴）`
+      });
+      add({
+        key: 'tsumo', name: '門前清自摸和', hanMenzen: 1, menzenOnly: true, minor: true,
+        need: Math.max(0, sh) * 2, maxNeed: 8,
+        note: '鳴かずに自分でツモれば1翻（鳴くと消えます）'
+      });
+      // 平和は「刻子を作らない・アタマが役牌でない」形
+      const hasTriplet = typesWith(concealed, 3) > 0;
+      const pinfuBlock = countIf(concealed, t => MJ.isHonor(t) && yakuhai.indexOf(t) >= 0);
+      add({
+        key: 'pinfu', trait: true, name: '平和', hanMenzen: 1, menzenOnly: true,
+        need: (hasTriplet ? 2 : 0) + pinfuBlock, maxNeed: 4,
+        note: '順子だけ＋役牌でないアタマ＋両面待ち（鳴くと消えます）'
       });
     }
 
-    // --- チャンタ ---
-    const chantaBad = types.filter(t => !MJ.isTerminalOrHonor(t)).length;
-    if (chantaBad <= 5) {
-      out.push({
-        name: 'チャンタ', han: isMenzen ? '2翻' : '1翻', open: true,
-        ok: false,
-        note: `1・9・字牌が多い手。全ての面子に端牌を入れると成立(残り${chantaBad}枚が中張牌)`,
-        score: 35 + (14 - chantaBad) * 3
-      });
-    }
+    return out.sort((a, b) => b.score - a.score);
+  }
 
-    return out.sort((a, b) => (b.ok - a.ok) || (b.score - a.score)).slice(0, 5);
+  // 同じ順子が2組できているか(一盃口)を調べる
+  function countPeikou(counts) {
+    let count = 0, best = 0;
+    for (let s = 0; s < 3; s++) {
+      for (let r = 0; r < 7; r++) {
+        const b = s * 9 + r;
+        const have = Math.min(counts[b], 2) + Math.min(counts[b + 1], 2) + Math.min(counts[b + 2], 2);
+        if (have > best) best = have;
+        if (counts[b] >= 2 && counts[b + 1] >= 2 && counts[b + 2] >= 2) count++;
+      }
+    }
+    return { count, best };
+  }
+
+  // 三色同順に一番近い並びを探す
+  function bestSanshoku(counts) {
+    let best = { need: 99, r: 1 };
+    for (let r = 0; r < 7; r++) {
+      let need = 0;
+      for (let s = 0; s < 3; s++) {
+        const b = s * 9 + r;
+        need += (counts[b] ? 0 : 1) + (counts[b + 1] ? 0 : 1) + (counts[b + 2] ? 0 : 1);
+      }
+      if (need < best.need) best = { need, r: r + 1 };
+    }
+    return best;
+  }
+
+  // 一気通貫に一番近い色を探す
+  function bestIttsu(counts) {
+    let best = { need: 99, suit: 0 };
+    for (let s = 0; s < 3; s++) {
+      let need = 0;
+      for (let r = 0; r < 9; r++) if (!counts[s * 9 + r]) need++;
+      if (need < best.need) best = { need, suit: s };
+    }
+    return best;
+  }
+
+  // 三色同刻に一番近い数字を探す
+  function bestSanshokuKoutsu(counts) {
+    let best = { need: 99, r: 1 };
+    for (let r = 0; r < 9; r++) {
+      let need = 0;
+      for (let s = 0; s < 3; s++) need += Math.max(0, 3 - counts[s * 9 + r]);
+      if (need < best.need) best = { need, r: r + 1 };
+    }
+    return best;
+  }
+
+  // 九蓮宝燈 1112345678999 の形にあと何枚か
+  function churenNeed(counts, suit) {
+    const want = [3, 1, 1, 1, 1, 1, 1, 1, 3];
+    let need = 0;
+    for (let r = 0; r < 9; r++) need += Math.max(0, want[r] - counts[suit * 9 + r]);
+    return need;
+  }
+
+  function yakuCandidates(game, seat, limit) {
+    return yakuList(handContext(game, seat)).slice(0, limit || 6);
+  }
+
+  // ============================================================
+  //  鳴きの損得
+  //  「鳴いた後の手」を仮に組み立てて、鳴く前と同じ物差しで比べる。
+  //  何が消えて何が残るか・向聴がどれだけ進むかを返す。
+  // ============================================================
+
+  // 13枚+副露の形から、1枚切ったあとの最小向聴数
+  function bestShantenAfterDiscard(hand, melds) {
+    const seen = new Set();
+    let best = 99;
+    hand.forEach(id => {
+      const t = MJ.idToType(id);
+      if (seen.has(t)) return;
+      seen.add(t);
+      const s = MJ.shanten(hand.filter(x => x !== id), melds);
+      if (s < best) best = s;
+    });
+    return best === 99 ? MJ.shanten(hand, melds) : best;
+  }
+
+  // 鳴いた後の手牌を作る。usedTypes は手牌から出す牌の種類
+  function simulateCall(game, seat, kind, tileId, usedTypes) {
+    const p = game.player(seat);
+    const hand = p.hand.slice();
+    const taken = [];
+    usedTypes.forEach(t => {
+      const i = hand.findIndex(id => MJ.idToType(id) === t);
+      if (i >= 0) taken.push(hand.splice(i, 1)[0]);
+    });
+    if (taken.length !== usedTypes.length) return null; // 手牌が足りない(想定外)
+    const meld = { kind, tiles: [tileId].concat(taken), from: -1 };
+    return { hand, melds: p.melds.concat([meld]) };
+  }
+
+  // 鳴く前と鳴いた後を比べる
+  function callImpact(game, seat, kind, tileId, usedTypes) {
+    const p = game.player(seat);
+    const after = simulateCall(game, seat, kind, tileId, usedTypes);
+    if (!after) return null;
+
+    const beforeCtx = handContext(game, seat);
+    const afterCtx = handContext(game, seat, after);
+    const beforeList = yakuList(beforeCtx);
+    const afterList = yakuList(afterCtx);
+    const afterByKey = {};
+    afterList.forEach(e => { afterByKey[e.key] = e; });
+    const beforeByKey = {};
+    beforeList.forEach(e => { beforeByKey[e.key] = e; });
+
+    // 現実的に狙えている範囲だけを比べる(遠すぎる役を並べても混乱するため)
+    const plausible = e => e.need <= 3;
+
+    const lost = [], downgraded = [], worsened = [], kept = [], improved = [];
+    beforeList.filter(plausible).forEach(e => {
+      const a = afterByKey[e.key];
+      // 鳴いた瞬間に不可能になる(門前限定)、または遠すぎて候補から外れた
+      if (!a) { lost.push(e); return; }
+      const bh = e.hanMenzen, ah = a.hanOpen === null ? a.hanMenzen : a.hanOpen;
+      if (ah < bh) { downgraded.push({ name: e.name, from: bh, to: ah }); return; }
+      // 翻は同じでも、鳴いた牌のせいで条件から遠ざかることがある(端牌をチーしてタンヤオが消える等)
+      if (a.need > e.need) { worsened.push({ name: e.name, from: e.need, to: a.need }); return; }
+      kept.push(e);
+    });
+    afterList.filter(plausible).forEach(e => {
+      const b = beforeByKey[e.key];
+      if (!b || b.need > e.need) improved.push({ name: e.name, need: e.need, was: b ? b.need : null });
+    });
+
+    const shBefore = MJ.shanten(p.hand, p.melds);
+    const shAfter = bestShantenAfterDiscard(after.hand, after.melds);
+
+    // 鳴いた後に成立しうる役が1つも無いと和了できない。初心者が一番はまるところ。
+    const openYakuAfter = afterList.filter(e => !e.menzenOnly && e.need <= 2);
+
+    return {
+      kind, shantenBefore: shBefore, shantenAfter: shAfter,
+      lost, downgraded, worsened,
+      kept: kept.slice(0, 4), improved: improved.slice(0, 4),
+      noYakuRisk: openYakuAfter.length === 0,
+      openYaku: openYakuAfter.slice(0, 3),
+    };
   }
 
   // ---------- まとめて1回で取得 ----------
@@ -260,7 +600,10 @@
     return s + '向聴';
   }
 
-  const API = { analyze, discardCandidates, ukeire, yakuCandidates, dangerLevel, remaining, shantenLabel, DANGER_LABEL };
+  const API = {
+    analyze, discardCandidates, ukeire, yakuCandidates, callImpact,
+    dangerLevel, remaining, shantenLabel, DANGER_LABEL
+  };
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
   else root.MJAssist = API;
 })(typeof window !== 'undefined' ? window : globalThis);
