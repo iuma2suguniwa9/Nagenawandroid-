@@ -2,6 +2,10 @@
   --felt:#155040; --felt-dark:#0c382c; --felt-line:#1e6a55;
   --ivory:#f8f3e6; --ivory-dim:#e9e1cc; --tile-side:#cfc4a6;
   --ink:#2b2b26; --red:#c43a2f; --gold:#d9a441; --gold-soft:#eecf8f;
+  --op:15px;   /* 相手の伏せ牌の幅 */
+  --riv:17px;  /* 河の牌の幅 */
+  /* 手牌は14枚+隙間が必ず1行に収まる幅にする(上限34px) */
+  --hand:min(34px, calc((100vw - 46px) / 14));
 }
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none}
 html,body{height:100%}
@@ -16,7 +20,7 @@ a{color:var(--gold-soft)}
 
 /* ---------- 牌 ---------- */
 .tile{
-  width:34px;height:47px;border-radius:5px;flex:0 0 auto;
+  width:var(--hand);height:calc(var(--hand) * 1.38);border-radius:5px;flex:0 0 auto;
   background:linear-gradient(180deg,#fffdf5 88%,var(--tile-side) 88%);
   border:1px solid #b9ae8e;box-shadow:0 2px 3px rgba(0,0,0,.35);
   transition:transform .12s;
@@ -66,32 +70,61 @@ a{color:var(--gold-soft)}
   background:radial-gradient(circle at 50% 45%, var(--felt) 0%, var(--felt-dark) 100%);
   border-radius:16px;border:6px solid #0a2b21;box-shadow:inset 0 0 30px rgba(0,0,0,.5);}
 
-.seat{position:absolute;display:flex;flex-direction:column;align-items:center;gap:2px}
-.seat .nameline{font-size:10.5px;color:#e6efe9;background:rgba(0,0,0,.3);padding:1px 7px;border-radius:8px;display:flex;gap:5px;align-items:center}
+/* 卓のレイアウト。牌のサイズは --op（相手の伏せ牌）を基準に決めるので、
+   狭い画面ではこの1変数を縮めれば全体がそのまま収まる。 */
+.seat{position:absolute;display:flex;flex-direction:column;align-items:center;gap:2px;z-index:2}
+.seat .nameline{font-size:10.5px;color:#e6efe9;background:rgba(0,0,0,.45);padding:1px 7px;border-radius:8px;
+  display:flex;gap:5px;align-items:center;white-space:nowrap}
 .seat .nameline .score{color:var(--gold-soft);font-weight:700}
 .seat .nameline .dealer{color:#ffb144;font-weight:800}
 .seat .nameline.riichi{outline:1px solid var(--gold)}
-.seat-top{top:6px;left:50%;transform:translateX(-50%)}
-.seat-right{right:4px;top:50%;transform:translateY(-50%)}
-.seat-left{left:4px;top:50%;transform:translateY(-50%)}
+.seat-top{top:4px;left:50%;transform:translateX(-50%)}
+.seat-bottom{bottom:4px;left:50%;transform:translateX(-50%);flex-direction:column-reverse}
+.seat-right{right:2px;top:50%;transform:translateY(-50%)}
+.seat-left{left:2px;top:50%;transform:translateY(-50%)}
+/* 左右の席は名前欄を牌の列の上に浮かせる。
+   列と同じ行に置くと箱が名前の幅まで広がって河に被るため。 */
+.seat-left,.seat-right{position:absolute}
+.seat-left .nameline,.seat-right .nameline{position:absolute;bottom:100%;margin-bottom:5px}
+.seat-left .nameline{left:0}
+.seat-right .nameline{right:0}
+/* 手牌と副露のまとまり。上下の席は横並び、左右の席は縦並び。 */
+.seat-tiles{display:flex;gap:5px;align-items:center}
+.seat-left .seat-tiles,.seat-right .seat-tiles{flex-direction:column}
+/* 左右の席は副露も縦に積む。横に並べると箱が広がって河に被る。 */
+.seat-left .meld-row,.seat-right .meld-row,
+.seat-left .meld-group,.seat-right .meld-group{flex-direction:column}
+/* 相手の副露牌も伏せ牌と同じ大きさに揃える */
+.seat .meld-group .tile-s{width:var(--op);height:calc(var(--op) * 1.35)}
+.seat-left .meld-group .tile-s,.seat-right .meld-group .tile-s{width:calc(var(--op) * 1.35);height:var(--op)}
 .seat-hand{display:flex;gap:1px}
-.seat-top .seat-hand,.seat-bottom-mini{flex-direction:row}
+.seat-top .seat-hand,.seat-bottom .seat-hand{flex-direction:row}
 .seat-right .seat-hand,.seat-left .seat-hand{flex-direction:column}
-.seat-right .seat-hand .tile-s,.seat-left .seat-hand .tile-s{width:20px;height:20px;border-radius:3px}
+/* 上下の相手は牌を縦長、左右の相手は寝かせた向きに見せる */
+.seat-top .seat-hand .tile-s{width:var(--op);height:calc(var(--op) * 1.35)}
+.seat-right .seat-hand .tile-s,.seat-left .seat-hand .tile-s{width:calc(var(--op) * 1.35);height:var(--op)}
+/* 自分の手牌と副露は卓の下のエリアに描くので、卓上には名前だけ置く */
+.seat-bottom .seat-tiles{display:none}
 
-.river{display:flex;flex-wrap:wrap;gap:2px;max-width:150px;justify-content:center}
-.river-top{position:absolute;top:44px;left:50%;transform:translateX(-50%)}
-.river-right{position:absolute;right:60px;top:50%;transform:translateY(-50%);max-width:110px}
-.river-left{position:absolute;left:60px;top:50%;transform:translateY(-50%);max-width:110px}
-.river-bottom{position:absolute;bottom:44px;left:50%;transform:translateX(-50%)}
+.river{display:flex;flex-wrap:wrap;gap:2px;justify-content:center;z-index:1}
+.river .tile-s{width:var(--riv);height:calc(var(--riv) * 1.35)}
+/* 横向きの席の河は6枚で折り返す(縦に伸びすぎないように) */
+.river-top,.river-bottom{position:absolute;left:50%;transform:translateX(-50%);max-width:calc(var(--riv) * 6.6)}
+.river-right,.river-left{position:absolute;top:50%;transform:translateY(-50%);max-width:calc(var(--riv) * 4.4)}
+/* 相手の名前欄 + 手牌/副露の高さぶんを空けた位置に河を置く */
+.river-top{top:calc(var(--op) * 1.35 + 34px)}
+.river-bottom{bottom:calc(var(--op) * 1.35 + 34px)}
+.river-right{right:calc(var(--op) * 1.35 + 18px)}
+.river-left{left:calc(var(--op) * 1.35 + 18px)}
 
 .center-info{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;
   background:rgba(0,0,0,.28);border-radius:10px;padding:8px 14px;font-size:11px;color:#d8e6dd}
 .center-info .dora{display:flex;gap:3px;justify-content:center;margin-top:4px}
 .center-info .wallcount{color:var(--gold-soft);font-weight:700;margin-top:2px}
 
-.meld-row{display:flex;gap:3px;margin-top:2px}
+.meld-row{display:flex;gap:3px}
 .meld-group{display:flex;gap:1px;background:rgba(0,0,0,.2);padding:2px;border-radius:4px}
+.seat .meld-group{padding:1px}
 
 #log-panel{font-size:11px;color:#a9c8ba;background:rgba(0,0,0,.2);border-radius:8px;margin:6px 10px;padding:6px 10px;max-height:70px;overflow-y:auto}
 
@@ -121,6 +154,7 @@ a{color:var(--gold-soft)}
 .assist-yaku div{color:#cfe4da;line-height:1.45}
 .assist-yaku b{color:var(--gold-soft)}
 .assist-yaku .done b{color:#8fe6ae}
+.assist-loading{color:#9fc2b2;font-style:italic}
 .d0{color:#8fe6ae}.d1{color:#cfe4da}.d2{color:#f3d488}.d3{color:#ff9d92}
 /* 危険度に応じた手牌の下線 */
 .hand-tile.danger3{box-shadow:0 2px 3px rgba(0,0,0,.35),0 0 0 2px #c4443a inset}
@@ -129,7 +163,7 @@ a{color:var(--gold-soft)}
 .hand-tile.banned{opacity:.35;cursor:not-allowed}
 
 .bottom-area{padding:6px 10px 4px}
-.bottom-hand-wrap{display:flex;justify-content:center;gap:2px;flex-wrap:wrap;min-height:56px}
+.bottom-hand-wrap{display:flex;justify-content:center;gap:2px;flex-wrap:nowrap;min-height:calc(var(--hand) * 1.38 + 9px)}
 .bottom-melds{display:flex;gap:8px;justify-content:center;margin-top:4px}
 
 .action-bar{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;padding:10px 10px 4px;min-height:52px}
@@ -143,6 +177,38 @@ a{color:var(--gold-soft)}
 .action-bar button:active{transform:translateY(2px)}
 .action-bar button.toggled{outline:2px solid var(--gold)}
 .action-bar .chi-preview{display:flex;gap:2px}
+
+/* ---------- 鳴きの対象牌を目立たせる ---------- */
+/* 河でその牌だけを光らせる */
+.tile.calltarget{
+  outline:3px solid #ffd34d;outline-offset:1px;border-radius:4px;
+  box-shadow:0 0 0 1px #7a4b00,0 0 12px 3px rgba(255,211,77,.85);
+  animation:calltarget-pulse .9s ease-in-out infinite alternate;
+  position:relative;z-index:3;
+}
+@keyframes calltarget-pulse{
+  from{box-shadow:0 0 0 1px #7a4b00,0 0 6px 1px rgba(255,211,77,.55)}
+  to{box-shadow:0 0 0 1px #7a4b00,0 0 14px 5px rgba(255,211,77,.95)}
+}
+.river .tile.riichi-discard{transform:rotate(90deg)}
+
+/* 「誰が何を捨てたか」の見出し */
+.call-banner{
+  flex-basis:100%;display:flex;align-items:center;justify-content:center;gap:8px;
+  font-size:13px;color:var(--ivory);margin-bottom:2px;
+}
+.call-banner .tile{width:30px;height:41px}
+.call-banner .who,.call-banner .what{color:#cfe4da}
+
+/* 鳴いた後にできる面子を見せるボタン */
+.action-bar button.with-tiles{
+  display:flex;align-items:center;gap:8px;padding:8px 12px;
+}
+.action-bar button.with-tiles .lbl{font-size:15px;font-weight:800}
+.meld-preview{display:flex;gap:1px}
+.meld-preview .tile-s{width:20px;height:28px;border-radius:3px}
+.meld-preview .tile.calltarget{animation:none;outline-width:2px;
+  box-shadow:0 0 0 1px #7a4b00,0 0 7px 2px rgba(255,211,77,.9)}
 
 /* ---------- モーダル ---------- */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:50;padding:16px}
@@ -158,7 +224,11 @@ a{color:var(--gold-soft)}
 .modal-box .score-delta.plus{color:#1c6b3f;font-weight:700}
 .modal-box .score-delta.minus{color:var(--red);font-weight:700}
 
-@media (max-width:400px){
-  .tile{width:28px;height:39px}
-  .river-right,.river-left{max-width:80px}
+/* 狭い画面ほど牌を縮めて、卓が横にはみ出さないようにする */
+@media (max-width:412px){
+  :root{--op:13px;--riv:15px}
+}
+@media (max-width:360px){
+  :root{--op:12px;--riv:13.5px}
+  .seat .nameline{font-size:9.5px;padding:1px 5px}
 }

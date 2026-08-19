@@ -403,7 +403,11 @@
           this.players[discarderSeat].score -= amt;
           gained = amt;
         }
-        p.score += gained + (wi === 0 ? sticks * 1000 : 0);
+        const sticksBonus = (wi === 0 ? sticks * 1000 : 0);
+        p.score += gained + sticksBonus;
+        // handEnd の winners からも参照するので勝者オブジェクトに残す
+        w.gained = gained;
+        w.sticksBonus = sticksBonus;
         this.emit({ type: 'win', seat: w.seat, result: r, tileId: w.tileId, isTsumo: w.isTsumo, discarderSeat, gained });
         this.say(`${p.name} ${w.isTsumo ? 'ツモ' : 'ロン'}！ ${r.yaku.map(y => y.name + (y.han ? y.han + '翻' : '')).join('・')} ${r.fu}符${r.han}翻 ${gained}点`);
       });

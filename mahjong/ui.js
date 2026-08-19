@@ -16,6 +16,7 @@
   let resultQueue = []; // handEnd/gameEnd を溜めて順に表示
   let assistOn = true;   // アシスト機能のON/OFF
   let lastAnalysis = null; // 今の手番の解析結果 (手牌のハイライトにも使う)
+  let pendingCall = null;  // 鳴きの対象牌 {discarderSeat, tileId} — 河で光らせる
 
   const $ = sel => document.querySelector(sel);
   const el = (cls, html) => { const e = document.createElement('div'); e.className = cls || ''; if (html !== undefined) e.innerHTML = html; return e; };
@@ -43,7 +44,9 @@
     assistOn = !assistOn;
     $('#btn-assist').textContent = assistOn ? 'アシストON' : 'アシストOFF';
     $('#btn-assist').classList.toggle('off', !assistOn);
-    renderAssist();
+    // 自分の打牌待ちの最中にONにしたら、その場で解析し直す
+    if (assistOn && currentAwait && currentAwait.type === 'awaitDiscard') scheduleAssist();
+    else { lastAnalysis = null; renderAssist(); }
     renderAll();
   });
 
@@ -60,12 +63,15 @@
   }
 
   // ---------------- イベントキュー ----------------
+  // NPCの手はアニメーションとして見せたいので待つが、自分の手番の演出で
+  // 待たせると「自分の番なのに触れない」時間になるので、自分の席の分は詰める。
   function delayFor(evt) {
+    const mine = evt.seat === 0;
     switch (evt.type) {
-      case 'draw': return 260;
-      case 'discard': return 420;
-      case 'call': return 520;
-      case 'rinshanDraw': return 260;
+      case 'draw': return mine ? 70 : 200;
+      case 'rinshanDraw': return mine ? 70 : 200;
+      case 'discard': return mine ? 60 : 330;
+      case 'call': return mine ? 120 : 430;
       default: return 0;
     }
   }
@@ -89,7 +95,7 @@
     switch (evt.type) {
       case 'log': appendLog(evt.message); return;
       case 'handStart':
-        riichiArmed = false; currentAwait = null; lastAnalysis = null;
+        riichiArmed = false; currentAwait = null; lastAnalysis = null; pendingCall = null;
         renderAll(); renderAssist(); setActionBar([]); return;
       case 'draw': case 'discard': case 'call': case 'rinshanDraw':
         renderAll(); return;
@@ -105,18 +111,23 @@
         maybeShowNextResult();
         return;
       case 'awaitDiscard':
-        currentAwait = evt; computeAssist(); renderAll(); renderAssist();
-        setActionBarForDiscard(evt); return;
+        currentAwait = evt; pendingCall = null;
+        renderAll(); setActionBarForDiscard(evt);
+        // 解析は描画より重いので、手牌を触れる状態にしてから走らせる
+        scheduleAssist(); return;
       case 'awaitTsumoChoice':
         currentAwait = evt; renderAll(); showTsumoModal(evt); return;
       case 'awaitRonChoice':
-        currentAwait = evt; renderAll(); showRonModal(evt); return;
+        currentAwait = evt; pendingCall = { discarderSeat: evt.discarderSeat, tileId: evt.tileId };
+        renderAll(); showRonModal(evt); return;
       case 'awaitKanOrDiscard':
         currentAwait = evt; renderAll(); setActionBarForKan(evt); return;
       case 'awaitPonKanChoice':
-        currentAwait = evt; renderAll(); setActionBarForPonKan(evt); return;
+        currentAwait = evt; pendingCall = { discarderSeat: evt.discarderSeat, tileId: evt.tileId };
+        renderAll(); setActionBarForPonKan(evt); return;
       case 'awaitChiChoice':
-        currentAwait = evt; renderAll(); setActionBarForChi(evt); return;
+        currentAwait = evt; pendingCall = { discarderSeat: evt.discarderSeat, tileId: evt.tileId };
+        renderAll(); setActionBarForChi(evt); return;
       case 'awaitKyuushuChoice':
         currentAwait = evt; renderAll(); showKyuushuModal(evt); return;
     }
@@ -164,7 +175,8 @@
           ${yakuLines}
           <div class="yaku-line"><span>ドラ</span><span>${r.doraHan + r.akaHan}</span></div>
           ${(r.uraHan > 0) ? `<div class="yaku-line"><span>裏ドラ</span><span>${r.uraHan}</span></div>` : ''}
-          <div class="score-big">${r.han}翻${r.fu}符 ${w.gained}点</div>`;
+          <div class="score-big">${scoreHeadline(r)}</div>
+          <div class="score-detail">${w.gained}点${w.sticksBonus ? ` ＋ 供託${w.sticksBonus}点` : ''}</div>`;
       }).join('<hr style="margin:12px 0;border:none;border-top:1px dashed #cbb;">');
     } else if (evt.reason === 'abortive') {
       const rows = game.players.map(p =>
@@ -190,6 +202,21 @@
       game.proceedAfterHand();
       maybeShowNextResult();
     });
+  }
+
+  // 満貫以上は翻符ではなく名称で見せる（雀魂と同じ表示）
+  function scoreHeadline(r) {
+    if (r.isYakuman) {
+      const u = r.yakumanUnits || 1;
+      return u >= 2 ? `${u}倍役満` : '役満';
+    }
+    if (r.han >= 13) return '数え役満';
+    if (r.han >= 11) return '三倍満';
+    if (r.han >= 8) return '倍満';
+    if (r.han >= 6) return '跳満';
+    // 4翻30符 / 3翻60符 以上は切り上げずとも満貫扱いになる
+    if (r.han >= 5 || r.fu * Math.pow(2, 2 + r.han) >= 2000) return '満貫';
+    return `${r.han}翻${r.fu}符`;
   }
 
   function w_handPreview(w) {
@@ -239,6 +266,25 @@
   }
 
   // ---------------- アシスト表示 ----------------
+  // 解析(向聴数と受け入れの全探索)は数十msかかる。手番が来た瞬間に同期実行すると
+  // その間クリックを取りこぼすので、まず操作可能にしてから次フレームで走らせる。
+  let assistTimer = null;
+  function scheduleAssist() {
+    lastAnalysis = null;
+    $('#assist-panel').innerHTML = '';
+    if (assistTimer) { clearTimeout(assistTimer); assistTimer = null; }
+    if (!game || !assistOn) return;
+    const forEvt = currentAwait;
+    $('#assist-panel').innerHTML = '<div class="assist-box assist-loading">手を読んでいます…</div>';
+    assistTimer = setTimeout(() => {
+      assistTimer = null;
+      // 待っている間に手番が変わっていたら破棄する
+      if (currentAwait !== forEvt) { $('#assist-panel').innerHTML = ''; return; }
+      computeAssist();
+      renderAssist();
+      renderAll(); // おすすめ/危険牌の色分けを手牌に反映
+    }, 0);
+  }
   function computeAssist() {
     if (!game || !assistOn) { lastAnalysis = null; return; }
     try { lastAnalysis = A.analyze(game, 0); }
@@ -298,7 +344,7 @@
   // 人間の操作でゲームを進める関数を呼ぶ前には必ずこれでボタンを即座に消す。
   // (NPCのアニメーション待ち中に古いボタンが残って二重クリックされる事故を防ぐ)
   function commit(fn) {
-    return () => { setActionBar([]); currentAwait = null; fn(); };
+    return () => { setActionBar([]); currentAwait = null; pendingCall = null; renderAll(); fn(); };
   }
   function setActionBar(buttons) {
     const bar = $('#action-bar');
@@ -331,21 +377,55 @@
     buttons.push({ label: '打牌へ', onClick: commit(() => game.humanSkipKanOrDiscard()) });
     setActionBar(buttons);
   }
+  // 鳴きの対象牌を文章でも示す(河のハイライトと合わせて「どれを鳴くのか」を明確にする)
+  function callBanner(evt, verb) {
+    const seatName = game.player(evt.discarderSeat).name;
+    const t = MJ.idToType(evt.tileId);
+    return `<div class="call-banner">
+      <span class="who">${seatName}が捨てた</span>
+      ${T.tileHTML(t, { red: MJ.isRedFive(evt.tileId) })}
+      <span class="what">を${verb}</span></div>`;
+  }
+  // 鳴いた後にできる面子を、対象牌に印を付けて並べて見せる
+  function meldPreviewHTML(handTypes, calledType, calledRed) {
+    const all = handTypes.map(t => ({ t, called: false }))
+      .concat([{ t: calledType, called: true, red: calledRed }])
+      .sort((a, b) => a.t - b.t);
+    return `<span class="meld-preview">${all.map(x =>
+      T.tileHTML(x.t, { small: true, red: !!x.red }).replace('class="tile', 'class="tile' + (x.called ? ' calltarget' : '') + ' ')
+    ).join('')}</span>`;
+  }
+
   function setActionBarForPonKan(evt) {
-    const buttons = [];
-    if (evt.canPon) buttons.push({ label: 'ポン', cls: 'primary', onClick: commit(() => game.humanCallPon()) });
-    if (evt.canKan) buttons.push({ label: 'カン', cls: 'primary', onClick: commit(() => game.humanCallKan()) });
-    buttons.push({ label: 'パス', onClick: commit(() => game.humanPassCall()) });
-    setActionBar(buttons);
+    const bar = $('#action-bar');
+    bar.innerHTML = '';
+    const t = MJ.idToType(evt.tileId);
+    const red = MJ.isRedFive(evt.tileId);
+    bar.insertAdjacentHTML('beforeend', callBanner(evt, 'ポン／カンできます'));
+    const mk = (label, tiles, fn) => {
+      const btn = document.createElement('button');
+      btn.className = 'primary with-tiles';
+      btn.innerHTML = `<span class="lbl">${label}</span>${meldPreviewHTML(tiles, t, red)}`;
+      btn.addEventListener('click', commit(fn));
+      bar.appendChild(btn);
+    };
+    if (evt.canPon) mk('ポン', [t, t], () => game.humanCallPon());
+    if (evt.canKan) mk('カン', [t, t, t], () => game.humanCallKan());
+    const pass = document.createElement('button');
+    pass.textContent = 'パス';
+    pass.addEventListener('click', commit(() => game.humanPassCall()));
+    bar.appendChild(pass);
   }
   function setActionBarForChi(evt) {
     const bar = $('#action-bar');
     bar.innerHTML = '';
+    const t = MJ.idToType(evt.tileId);
+    const red = MJ.isRedFive(evt.tileId);
+    bar.insertAdjacentHTML('beforeend', callBanner(evt, 'チーできます'));
     evt.options.forEach(opt => {
       const btn = document.createElement('button');
-      btn.className = 'primary';
-      const types = opt.slice().sort((a, b) => a - b);
-      btn.innerHTML = 'チー ' + types.map(MJ.typeLabel).join('');
+      btn.className = 'primary with-tiles';
+      btn.innerHTML = `<span class="lbl">チー</span>${meldPreviewHTML(opt, t, red)}`;
       btn.addEventListener('click', commit(() => game.humanCallChi(opt)));
       bar.appendChild(btn);
     });
@@ -405,9 +485,14 @@
       meldDiv.innerHTML = p.melds.map(m => meldGroupHTML(m)).join('');
 
       const rDiv = riverEl(p.seat);
-      rDiv.innerHTML = p.discards.map(d => {
+      // 鳴きの対象になっている牌は河の最後の1枚。これを光らせて「どれを鳴くのか」を示す
+      const callIdx = (pendingCall && pendingCall.discarderSeat === p.seat)
+        ? p.discards.map(d => d.tileId).lastIndexOf(pendingCall.tileId) : -1;
+      rDiv.innerHTML = p.discards.map((d, i) => {
         const type = MJ.idToType(d.tileId);
-        return T.tileHTML(type, { small: true, red: MJ.isRedFive(d.tileId) }).replace('class="tile', d.riichi ? 'style="transform:rotate(90deg)" class="tile' : 'class="tile');
+        const extra = (i === callIdx ? ' calltarget' : '') + (d.riichi ? ' riichi-discard' : '');
+        return T.tileHTML(type, { small: true, red: MJ.isRedFive(d.tileId) })
+          .replace('class="tile', 'class="tile' + extra + ' ');
       }).join('');
     });
 
@@ -454,7 +539,9 @@
     [0, 1, 2, 3].forEach(seat => {
       const s = el('seat ' + layout[seat]);
       s.id = 'seat-' + seat;
-      s.innerHTML = `<div class="nameline"></div><div class="seat-hand"></div><div class="meld-row"></div>`;
+      // 手牌と副露は同じ列に並べる。縦に積むと鳴くたびに背が伸びて河に被るため。
+      s.innerHTML = `<div class="nameline"></div>
+        <div class="seat-tiles"><div class="seat-hand"></div><div class="meld-row"></div></div>`;
       table.appendChild(s);
     });
     const riverLayout = { 0: 'river river-bottom', 1: 'river river-right', 2: 'river river-top', 3: 'river river-left' };
