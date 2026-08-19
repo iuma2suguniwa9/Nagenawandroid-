@@ -37,10 +37,10 @@
 
 <div id="game-screen">
   <div class="topbar">
-    <span>四人打ち麻雀</span>
-    <span>
+    <span class="mywind">自風 <b class="wind-big" id="my-wind">東</b><span id="my-dealer" class="dealer-mark"></span></span>
+    <span class="tb-right">
+      <button type="button" id="btn-sound" class="sound-toggle">🔊</button>
       <button type="button" id="btn-assist" class="assist-toggle">アシストON</button>
-      <a href="../yaku-dojo.html" target="_blank"><button type="button">役一覧</button></a>
       <button type="button" id="btn-restart">やめる</button>
     </span>
   </div>
@@ -65,6 +65,8 @@
 <script src="game.js"></script>
 <script src="tiles.js"></script>
 <script src="assist.js"></script>
+<script src="sound.js"></script>
+<script src="fx.js"></script>
 <script src="ui.js"></script>
 </body>
 </html>

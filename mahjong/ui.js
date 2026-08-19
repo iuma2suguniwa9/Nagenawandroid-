@@ -7,6 +7,9 @@
   const WIND_NAME = window.WIND_NAME || ['東', '南', '西', '北'];
 
   const A = window.MJAssist;
+  const S = window.MJSound;
+  const FX = window.MJFx;
+  const snd = name => { if (S) S.play(name); };
 
   let game = null;
   let eventQueue = [];
@@ -25,6 +28,7 @@
   function showScreen(name) {
     $('#start-screen').style.display = name === 'start' ? 'block' : 'none';
     $('#game-screen').classList.toggle('on', name === 'game');
+    document.body.classList.toggle('playing', name === 'game');
   }
 
   let selectedMode = 'tonpuu';
@@ -37,8 +41,25 @@
   });
   $('#btn-start').addEventListener('click', () => {
     assistOn = $('#opt-assist').checked;
+    // iOS/Safari は音をユーザー操作の中で初期化しないと以後ずっと鳴らない
+    if (S) { S.unlock(); snd('tap'); }
     startGame(selectedMode);
   });
+
+  function syncSoundButton() {
+    const on = S ? S.isOn() : false;
+    const b = $('#btn-sound');
+    b.textContent = on ? '🔊' : '🔇';
+    b.classList.toggle('off', !on);
+    b.setAttribute('aria-label', on ? '音を消す' : '音を出す');
+  }
+  $('#btn-sound').addEventListener('click', () => {
+    if (!S) return;
+    S.unlock();
+    if (S.toggle()) snd('tap');
+    syncSoundButton();
+  });
+  syncSoundButton();
   $('#btn-restart').addEventListener('click', () => { closeModal(); showScreen('start'); });
   $('#btn-assist').addEventListener('click', () => {
     assistOn = !assistOn;
@@ -96,12 +117,24 @@
       case 'log': appendLog(evt.message); return;
       case 'handStart':
         riichiArmed = false; currentAwait = null; lastAnalysis = null; pendingCall = null;
+        if (FX) FX.clear();
+        prevDoraCount = 0;
         renderAll(); renderAssist(); setActionBar([]); return;
-      case 'draw': case 'discard': case 'call': case 'rinshanDraw':
+      case 'draw': case 'rinshanDraw':
+        if (evt.seat === 0) snd('draw');
+        renderAll(); return;
+      case 'discard':
+        snd(evt.seat === 0 ? 'discard' : 'discardNpc');
+        if (evt.riichi) { snd('riichi'); if (FX) FX.scene('riichi'); }
+        renderAll(); return;
+      case 'call':
+        onCallEffect(evt);
         renderAll(); return;
       case 'win':
-        return; // handEnd でまとめて表示
+        onWinEffect(evt);
+        return; // 結果表示は handEnd でまとめて行う
       case 'handEnd':
+        if (evt.reason !== 'win') snd('draw_end');
         renderAll();
         resultQueue.push({ kind: 'handEnd', evt });
         maybeShowNextResult();
@@ -133,6 +166,53 @@
     }
   }
 
+  // ---------------- 演出 ----------------
+  let prevDoraCount = 0;
+
+  function onCallEffect(evt) {
+    const last = evt.melds && evt.melds[evt.melds.length - 1];
+    const kind = last ? last.kind : (evt.isKan ? 'minkan' : 'pon');
+    const isKan = kind === 'minkan' || kind === 'ankan' || kind === 'kakan';
+    if (isKan) { snd('kan'); if (FX) FX.scene('call', 'kan'); }
+    else if (kind === 'chi') { snd('chi'); if (FX) FX.scene('call', 'chi'); }
+    else { snd('pon'); if (FX) FX.scene('call', 'pon'); }
+  }
+
+  function onWinEffect(evt) {
+    const r = evt.result || {};
+    const big = r.isYakuman || r.han >= 6;
+    if (evt.seat === 0) {
+      // 自分の和了
+      if (r.isYakuman) { snd('yakuman'); if (FX) FX.scene('yakuman'); }
+      else {
+        snd(evt.isTsumo ? 'tsumo' : 'ron');
+        if (FX) FX.scene(evt.isTsumo ? 'tsumo' : 'ron', big);
+      }
+    } else if (!evt.isTsumo && evt.discarderSeat === 0) {
+      // 自分が振り込んだ
+      snd('lose');
+      if (FX) FX.scene('lose');
+    } else {
+      // 他家同士の決着。うるさくしすぎない
+      snd(evt.isTsumo ? 'tsumo' : 'ron');
+      if (FX) { FX.stamp(evt.isTsumo ? 'ツモ' : 'ロン', { color: '#cfe4da', ms: 800 }); FX.shake(); }
+    }
+  }
+
+  // 槓でドラが増えたときにめくれた牌を光らせる
+  function flashNewDora() {
+    const n = game.doraIndicatorTypes().length;
+    if (n > prevDoraCount) {
+      if (prevDoraCount > 0) {
+        snd('dora');
+        const tiles = document.querySelectorAll('#dora-area .tile');
+        const el = tiles[n - 1];
+        if (el) { el.classList.add('fx-flip'); if (FX) FX.sparkAt(el); }
+      }
+      prevDoraCount = n;
+    }
+  }
+
   function showKyuushuModal(evt) {
     openModal(`<div class="modal-box"><h3 class="serif">九種九牌</h3>
       <p>1・9・字牌が${evt.kinds}種類あります。<br>この局を流して(途中流局)やり直せます。</p>
@@ -161,6 +241,8 @@
   function openModal(html) {
     $('#modal-overlay').innerHTML = html;
     $('#modal-overlay').classList.add('on');
+    const box = $('#modal-overlay .modal-box');
+    if (box) box.classList.add('fx-in');
   }
 
   function showHandEndModal(evt) {
@@ -176,7 +258,7 @@
           <div class="yaku-line"><span>ドラ</span><span>${r.doraHan + r.akaHan}</span></div>
           ${(r.uraHan > 0) ? `<div class="yaku-line"><span>裏ドラ</span><span>${r.uraHan}</span></div>` : ''}
           <div class="score-big">${scoreHeadline(r)}</div>
-          <div class="score-detail">${w.gained}点${w.sticksBonus ? ` ＋ 供託${w.sticksBonus}点` : ''}</div>`;
+          <div class="score-detail"><span class="gained-num" data-to="${w.gained}">0</span>点${w.sticksBonus ? ` ＋ 供託${w.sticksBonus}点` : ''}</div>`;
       }).join('<hr style="margin:12px 0;border:none;border-top:1px dashed #cbb;">');
     } else if (evt.reason === 'abortive') {
       const rows = game.players.map(p =>
@@ -197,7 +279,11 @@
     openModal(`<div class="modal-box">${body}
       <button class="big-btn" id="btn-next-hand">${game.gameOver ? '結果を見る' : '次の局へ'}</button>
     </div>`);
+    // 点数はゼロから伸ばす
+    if (FX) document.querySelectorAll('#modal-overlay .gained-num')
+      .forEach(el => FX.countUp(el, +el.dataset.to, 800));
     $('#btn-next-hand').addEventListener('click', () => {
+      snd('tap');
       closeModal();
       game.proceedAfterHand();
       maybeShowNextResult();
@@ -243,7 +329,14 @@
       <table>${rows}</table>
       <p style="font-size:11.5px;color:#777;margin-top:8px">25000点持ち30000点返し／ウマ +15/+5/-5/-15</p>
       <button class="big-btn" id="btn-finish">スタート画面へ</button></div>`);
-    $('#btn-finish').addEventListener('click', () => { closeModal(); showScreen('start'); });
+    snd('gameEnd');
+    // 1位なら盛大に祝う
+    if (FX) {
+      const mine = st.find(p => p.name === game.player(0).name);
+      if (mine && mine.rank === 1) { FX.scene('yakuman'); }
+      else FX.confetti({ count: 70, power: 11 });
+    }
+    $('#btn-finish').addEventListener('click', () => { snd('tap'); closeModal(); showScreen('start'); });
   }
 
   function showTsumoModal(evt) {
@@ -253,16 +346,18 @@
       <div class="score-big">${r.han}翻${r.fu}符</div>
       <button class="big-btn" id="btn-tsumo-yes">ツモ和了する</button>
       <button class="big-btn" id="btn-tsumo-no" style="background:#ccc;box-shadow:0 3px 0 #999;color:#333">見送る</button></div>`);
-    $('#btn-tsumo-yes').addEventListener('click', () => { closeModal(); game.humanChooseTsumo(); });
-    $('#btn-tsumo-no').addEventListener('click', () => { closeModal(); game.humanSkipTsumo(); });
+    if (FX) FX.flash('rgba(255,211,77,.4)', 380);
+    $('#btn-tsumo-yes').addEventListener('click', () => { snd('tap'); closeModal(); game.humanChooseTsumo(); });
+    $('#btn-tsumo-no').addEventListener('click', () => { snd('tap'); closeModal(); game.humanSkipTsumo(); });
   }
   function showRonModal(evt) {
     openModal(`<div class="modal-box"><h3 class="serif">ロン！</h3>
       <p>この牌で和了できます。</p>
       <button class="big-btn" id="btn-ron-yes">ロンする</button>
       <button class="big-btn" id="btn-ron-no" style="background:#ccc;box-shadow:0 3px 0 #999;color:#333">見送る</button></div>`);
-    $('#btn-ron-yes').addEventListener('click', () => { closeModal(); game.humanChooseRon(); });
-    $('#btn-ron-no').addEventListener('click', () => { closeModal(); game.humanSkipRon(); });
+    if (FX) FX.flash('rgba(255,120,90,.4)', 380);
+    $('#btn-ron-yes').addEventListener('click', () => { snd('tap'); closeModal(); game.humanChooseRon(); });
+    $('#btn-ron-no').addEventListener('click', () => { snd('tap'); closeModal(); game.humanSkipRon(); });
   }
 
   // ---------------- アシスト表示 ----------------
@@ -344,7 +439,7 @@
   // 人間の操作でゲームを進める関数を呼ぶ前には必ずこれでボタンを即座に消す。
   // (NPCのアニメーション待ち中に古いボタンが残って二重クリックされる事故を防ぐ)
   function commit(fn) {
-    return () => { setActionBar([]); currentAwait = null; pendingCall = null; renderAll(); fn(); };
+    return () => { snd('tap'); setActionBar([]); currentAwait = null; pendingCall = null; renderAll(); fn(); };
   }
   function setActionBar(buttons) {
     const bar = $('#action-bar');
@@ -353,7 +448,7 @@
       const btn = document.createElement('button');
       btn.textContent = b.label;
       if (b.cls) btn.className = b.cls;
-      btn.addEventListener('click', b.onClick);
+      btn.addEventListener('click', e => { snd('tap'); b.onClick(e); });
       bar.appendChild(btn);
     });
   }
@@ -442,16 +537,19 @@
     const tileId = +t.dataset.id;
     const p = game.player(0);
     if (game.forbiddenDiscards(0).includes(MJ.idToType(tileId))) {
+      snd('warn');
       appendLog('鳴いた直後にその牌は切れません(食い替え禁止)。');
       return;
     }
     if (riichiArmed) {
       const rest = p.hand.filter(id => id !== tileId);
       if (!MJ.isTenpai(rest, p.melds)) {
+        snd('warn');
         appendLog('その牌を切るとテンパイが崩れます。リーチできません。');
         return;
       }
     }
+    if (riichiArmed && FX) FX.sparkAt(t, '#ffd34d');
     const armed = riichiArmed;
     riichiArmed = false;
     currentAwait = null;
@@ -472,11 +570,19 @@
     $('#roundinfo').textContent = `${WIND_NAME[r.roundWind - 27]}${r.roundNumber}局 ${r.honba}本場` + (r.riichiSticks ? ` (供託${r.riichiSticks})` : '');
     $('#wallcount').textContent = `残り${Math.max(0, game.wall.length - game.wallPos)}枚`;
     $('#dora-area').innerHTML = game.doraIndicatorTypes().map(t => T.tileHTML(t, { small: true })).join('');
+    flashNewDora();
+
+    // 自風をトップバーに大きく出す
+    const me0 = pub[0];
+    $('#my-wind').textContent = WIND_NAME[me0.seatWind];
+    $('#my-dealer').textContent = me0.isDealer ? '(親)' : '';
 
     pub.forEach(p => {
       const nameDiv = seatEl(p.seat).querySelector('.nameline');
       nameDiv.className = 'nameline' + (p.riichi ? ' riichi' : '');
-      nameDiv.innerHTML = `${p.isDealer ? '<span class="dealer">親</span>' : ''}${p.name} <span class="score">${p.score}</span>`;
+      nameDiv.innerHTML =
+        `<span class="wind${p.seat === 0 ? ' me' : ''}">${WIND_NAME[p.seatWind]}</span>` +
+        `${p.isDealer ? '<span class="dealer">親</span>' : ''}${p.name} <span class="score">${p.score}</span>`;
       const handDiv = seatEl(p.seat).querySelector('.seat-hand');
       if (p.seat !== 0) {
         handDiv.innerHTML = Array.from({ length: p.handCount }).map(() => T.tileBackHTML({ small: true })).join('');
